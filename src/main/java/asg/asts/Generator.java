@@ -44,7 +44,6 @@ public class Generator {
 	
 	
 	public Generator(FileGenerator fileGenerator, Program prog, String p_outputFolder) {
-		System.out.println(prog);
 		this.fileGenerator = fileGenerator;
 		
 		this.prog = prog;
@@ -197,7 +196,6 @@ public class Generator {
 	}
 
 	public void generate() {
-		System.out.println("calculating types ... ");
 		calculateProperties();
 		calculateSubTypes();
 		calculateContainments();
@@ -208,22 +206,17 @@ public class Generator {
 		generateCyclicDependencyError();
 		
 		
-		System.out.println("generating property interfaces ... ");
 		generatePropertyInterfaces();
 		
-		System.out.println("generating interfaces ... ");
 		generateInterfaceTypes();
 		
-		System.out.println("generating base classes ... ");
 		generateBaseClasses();
 		
-		System.out.println("generating list classes ...");
 		generateLists();
 		
 		
 		generateFactoryClass();
 		
-		System.out.println("Done.");
 	}
 
 	private void generatePackageInfo() {

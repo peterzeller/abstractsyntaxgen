@@ -45,14 +45,11 @@ public class FileGenerator {
 		
 		
 		if (writeFile) {
-			System.out.println("writing file " + file);
 			try {
 				Files.write(sb, file, Charsets.UTF_8);
 			} catch (IOException e) {
 				abort("Error: Could not write file " + filename);
 			}
-		} else {
-			System.out.println("not changed: " + file);
 		}
 		oldFiles.remove(file);
 	}

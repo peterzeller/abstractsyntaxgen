@@ -52,8 +52,6 @@ public class Main {
 			String inputFileG = inputFile + ".g";
 			if (new File(inputFileG).exists()) {
 				compileGrammarSpec(fileGenerator, inputFileG, prog);
-			} else {
-				System.err.println("No Grammar file given for " + inputFileG);
 			}
 			fileGenerator.removeOldFiles();
 		} catch (Throwable t) {
@@ -65,7 +63,6 @@ public class Main {
 
 	public static Program compileAstSpec(String inputFile, String outputFolder)
 			throws IOException {
-		System.out.println(new File(inputFile).getAbsolutePath());
 		AsgAntlrParserLexer lexer = new AsgAntlrParserLexer(new ANTLRFileStream(inputFile));
 		CommonTokenStream tokens = new CommonTokenStream(lexer);
 		AsgAntlrParserParser parser = new AsgAntlrParserParser(tokens);
@@ -97,8 +94,6 @@ public class Main {
 		f.result.program = prog;
 		
 		new GrammarTranslation(fileGenerator, f.result, prog).translate();
-		System.out.println("GrammarFileContext: ");
-		System.out.println(f.toStringTree(parser));
 	}
 
 }

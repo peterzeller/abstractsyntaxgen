@@ -26,7 +26,6 @@ public class GrammarTranslation {
 			translateRule(r);
 		}
 		fileGenerator.createFile("grammar.g4", sb);
-		System.out.println(sb.toString());
 	}
 
 	private void translateRule(Rule r) {
