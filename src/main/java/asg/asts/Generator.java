@@ -41,6 +41,7 @@ public class Generator {
 	private Map<String, Parameter> parameters = Maps.newLinkedHashMap();
 	private final FileGenerator fileGenerator;
 	private String typePrefix;
+	private CaseDef commonSuperType;
 	
 	
 	public Generator(FileGenerator fileGenerator, Program prog, String p_outputFolder) {
@@ -196,6 +197,8 @@ public class Generator {
 	}
 
 	public void generate() {
+		createFakeSuperclass();
+		
 		calculateProperties();
 		calculateSubTypes();
 		calculateContainments();
@@ -218,6 +221,22 @@ public class Generator {
 		generateFactoryClass();
 		
 	}
+
+	private void createFakeSuperclass() {
+		commonSuperType = new CaseDef("Element");
+		for (CaseDef d : prog.caseDefs) {
+			commonSuperType.addAlternative(d.getName());
+		}
+		for (ConstructorDef d : prog.constructorDefs) {
+			commonSuperType.addAlternative(d.getName());
+		}
+		for (ListDef d : prog.listDefs) {
+			commonSuperType.addAlternative(d.getName());
+		}
+		prog.caseDefs.add(commonSuperType);
+	}
+
+
 
 	private void generatePackageInfo() {
 		StringBuilder sb = new StringBuilder();
@@ -269,7 +288,7 @@ public class Generator {
 		printProlog(sb);
 		addSuppressWarningAnnotations(sb);
 		sb.append("class " + c.getName(typePrefix) + "Impl implements ");
-		sb.append(c.getName(typePrefix) +  ", " + getCommonSupertypeType() + "Intern {\n");
+		sb.append(c.getName(typePrefix) +  "{\n");
 
 		// create constructor
 		createConstructor(c, sb);
@@ -411,14 +430,21 @@ public class Generator {
 		for (Parameter p : c.parameters) {
 			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) { 
 				// add null checks for non primitive types:
-				sb.append("		if (" + p.name	+ " == null) throw new IllegalArgumentException();\n");
+				sb.append("		if (" + p.name	+ " == null)\n");
+				sb.append("			throw new IllegalArgumentException(\"Element "+p.name+" must not be null.\");\n");
+			}
+		}
+		for (Parameter p : c.parameters) {
+			sb.append("		this." + p.name + " = " + p.name + ";\n");
+		}
+		for (Parameter p : c.parameters) {
+			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) { 
 				if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
 					// we have a generated type. 
 					// the new element has a new parent:
-					sb.append("		(("+getCommonSupertypeType()+"Intern)" + p.name + ").setParent(this);\n");
+					sb.append("		" + p.name + ".setParent(this);\n");
 				}
 			}
-			sb.append("		this." + p.name + " = " + p.name + ";\n");
 		}
 		sb.append("	}\n\n");
 	}
@@ -480,9 +506,9 @@ public class Generator {
 				if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
 					// we have a generated type. 
 					// the removed type looses its parent:
-					sb.append("		(("+getCommonSupertypeType()+"Intern)this." + p.name + ").setParent(null);\n");
+					sb.append("		this." + p.name + ".setParent(null);\n");
 					// the new element has a new parent:
-					sb.append("		(("+getCommonSupertypeType()+"Intern)" + p.name + ").setParent(this);\n");
+					sb.append("		this." + p.name + ".setParent(this);\n");
 				}
 			}
 			sb.append("		this." + p.name + " = " + p.name + ";\n" + "	} \n");
@@ -658,10 +684,13 @@ public class Generator {
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
 		sb.append("public interface " + c.getName(typePrefix) + " extends ");
-		sb.append(getCommonSupertypeType());
+		boolean first = true;
 		for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
-			sb.append(", ");
+			if (!first) {
+				sb.append(", ");
+			}
 			sb.append(supertype.getName(typePrefix));
+			first = false;
 		}
 		// create getters and setters for parameters:
 //		for (Parameter p : c.parameters) {
@@ -804,13 +833,20 @@ public class Generator {
 	}
 
 	private void generateInterfaceType(CaseDef c) {
+		if (c == commonSuperType) {
+			// generated somewhere else
+			return;
+		}
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
 		sb.append("public interface " + c.getName(typePrefix) + " extends ");
-		sb.append(getCommonSupertypeType());
+		boolean first = true;
 		for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
-			sb.append(", ");
+			if (!first) {
+				sb.append(", ");
+			}
 			sb.append(supertype.getName(typePrefix));
+			first = false;
 		}
 		// calculate common attributes:
 		Set<Parameter> attributes = calculateAttributes(c);
@@ -831,6 +867,24 @@ public class Generator {
 		
 		
 		
+		generateMatcher(c, sb);
+		
+		// copy method
+		sb.append("	" + getCommonSupertypeType() + " copy();\n");
+
+		
+		generateVisitorInterface(c, sb);
+		
+		createAttributeStubs(c, sb);
+		
+		
+		sb.append("}\n");
+		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
+	}
+
+
+
+	private void generateMatcher(CaseDef c, StringBuilder sb) {
 		// create match methods:		
 		sb.append("	<T> T match(Matcher<T> s);\n");
 		sb.append("	void match(MatcherVoid s);\n");
@@ -848,18 +902,6 @@ public class Generator {
 			sb.append("		void case_" + baseType.getName() + "(" + baseType.getName(typePrefix) + " " + toFirstLower(baseType.getName())+ ");\n");
 		}
 		sb.append("	}\n\n");
-		
-		// copy method
-		sb.append("	" + getCommonSupertypeType() + " copy();\n");
-
-		
-		generateVisitorInterface(c, sb);
-		
-		createAttributeStubs(c, sb);
-		
-		
-		sb.append("}\n");
-		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
 	}
 
 	
@@ -902,19 +944,19 @@ public class Generator {
 		printProlog(sb);
 		
 		addSuppressWarningAnnotations(sb);
-		sb.append("class " + l.getName(typePrefix) + "Impl extends "+l.getName(typePrefix)+" implements "+getCommonSupertypeType()+"Intern {\n ");
+		sb.append("class " + l.getName(typePrefix) + "Impl extends "+l.getName(typePrefix)+" {\n ");
 		
 		createGetSetParentMethods(sb);
 		
 		sb.append("	protected void other_setParentToThis("+printType(l.itemType)+" t) {\n");
 		if (isGeneratedTyp(l.itemType) && !l.ref) {
-			sb.append("		(("+getCommonSupertypeType()+"Intern) t).setParent(this);\n");
+			sb.append("		t.setParent(this);\n");
 		}
 		sb.append("	}\n\n");
 		
 		sb.append("	protected void other_clearParent("+printType(l.itemType)+" t) {\n");
 		if (isGeneratedTyp(l.itemType) && !l.ref) {
-			sb.append("		(("+getCommonSupertypeType()+"Intern) t).setParent(null);\n");
+			sb.append("		t.setParent(null);\n");
 		}
 		sb.append("	}\n\n");
 		
@@ -976,10 +1018,13 @@ public class Generator {
 		printProlog(sb);
 		addSuppressWarningAnnotations(sb);
 		sb.append("public abstract class " + l.getName(typePrefix) + " extends AsgList<"+printType(l.itemType)+"> implements ");
-		sb.append(getCommonSupertypeType());
+		boolean first = true;
 		for (AstEntityDefinition supertype : directSuperTypes.get(l)) {
-			sb.append(", ");
+			if (!first) {
+				sb.append(", ");
+			}
 			sb.append(supertype.getName(typePrefix));
+			first = false;
 		}
 		sb.append("{\n");
 
@@ -1027,34 +1072,27 @@ public class Generator {
 				"	"+getCommonSupertypeType()+" get(int i);\n"+
 				"	"+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElement);\n"+
 				"	void setParent(" + getNullableAnnotation() + " "+getCommonSupertypeType()+" parent);\n");
-		AstEntityDefinition c = new AstEntityDefinition() {
-			
-			@Override
-			public String getName() {
-				return getCommonSupertypeType();
-			}
-		};
+//		AstEntityDefinition c = new AstEntityDefinition() {
+//			
+//			@Override
+//			public String getName() {
+//				return getCommonSupertypeType();
+//			}
+//		};
 		//		for (AttributeDef attr : prog.attrDefs) {
 //			if (attr.typ.equals(getCommonSupertypeType())) {
 //				sb.append("	"  +attr.returns + " " + attr.attr + "();\n");
 //			}
 //		}
-		createAttributeStubs(c, sb);
+		
+		generateMatcher(commonSuperType, sb);
+		generateVisitorInterface(commonSuperType, sb);
+		createAttributeStubs(commonSuperType, sb);
 		sb.append("}\n\n");
 		
 		
 		
 		fileGenerator.createFile(getCommonSupertypeType() + ".java", sb);
-		
-		
-		StringBuilder sb2 = new StringBuilder();
-		printProlog(sb2);
-		
-		sb2.append("interface "+getCommonSupertypeType()+"Intern {\n" +
-				"	void setParent(" + getNullableAnnotation() + " "+getCommonSupertypeType()+" pos);\n" +
-				"}\n\n");
-		fileGenerator.createFile(getCommonSupertypeType() + "Intern.java", sb2);
-		
 	}
 
 	private void generateStandardList() {
