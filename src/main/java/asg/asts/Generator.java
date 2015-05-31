@@ -295,6 +295,9 @@ public class Generator {
 
 		// get/set parent method:
 		createGetSetParentMethods(sb);
+		
+		// replaceBy method:
+		createReplaceByMethod(sb);
 
 		// create getters and setters for parameters:
 		createGetterAndSetterMethods(c, sb);
@@ -481,12 +484,27 @@ public class Generator {
 		sb.append("	private " + getCommonSupertypeType() + " parent;\n");
 		sb.append("	public " + getNullableAnnotation() + " " + getCommonSupertypeType() + " getParent() { return parent; }\n");
 		sb.append("	public void setParent(" + getNullableAnnotation() + " " + getCommonSupertypeType() + " parent) {\n" +
-				"		if (parent != null && this.parent != null) { " +
-				"			throw new Error(\"Parent of \" + this + \" already set: \" + this.parent + \"\\ntried to change to \" + parent); " +
+				"		if (parent != null && this.parent != null) {\n" +
+				"			throw new Error(\"Parent of \" + this + \" already set: \" + this.parent + \"\\ntried to change to \" + parent);\n" +
 				"		}\n" +
 				"		this.parent = parent;\n" +	
 				"	}\n\n");
 	}
+	
+	
+	private void createReplaceByMethod(StringBuilder sb) {
+		sb.append("	public void replaceBy("+getCommonSupertypeType()+" other) {\n");
+		sb.append("		if (parent == null)\n");
+		sb.append("			throw new RuntimeException(\"Node not attached to tree.\");\n");
+		sb.append("		for (int i=0; i<parent.size(); i++) {\n");
+		sb.append("			if (parent.get(i) == this) {\n");
+		sb.append("				parent.set(i, other);\n");
+		sb.append("				return;\n");
+		sb.append("			}\n");
+		sb.append("		}\n");
+		sb.append("	}\n\n");
+	}
+	
 
 	private String getNullableAnnotation() {
 //		return "@org.eclipse.jdt.annotation.Nullable"; // TODO add flag
@@ -508,7 +526,7 @@ public class Generator {
 					// the removed type looses its parent:
 					sb.append("		this." + p.name + ".setParent(null);\n");
 					// the new element has a new parent:
-					sb.append("		this." + p.name + ".setParent(this);\n");
+					sb.append("		" + p.name + ".setParent(this);\n");
 				}
 			}
 			sb.append("		this." + p.name + " = " + p.name + ";\n" + "	} \n");
@@ -948,6 +966,8 @@ public class Generator {
 		
 		createGetSetParentMethods(sb);
 		
+		createReplaceByMethod(sb);
+		
 		sb.append("	protected void other_setParentToThis("+printType(l.itemType)+" t) {\n");
 		if (isGeneratedTyp(l.itemType) && !l.ref) {
 			sb.append("		t.setParent(this);\n");
@@ -1072,18 +1092,11 @@ public class Generator {
 				"	"+getCommonSupertypeType()+" get(int i);\n"+
 				"	"+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElement);\n"+
 				"	void setParent(" + getNullableAnnotation() + " "+getCommonSupertypeType()+" parent);\n");
-//		AstEntityDefinition c = new AstEntityDefinition() {
-//			
-//			@Override
-//			public String getName() {
-//				return getCommonSupertypeType();
-//			}
-//		};
-		//		for (AttributeDef attr : prog.attrDefs) {
-//			if (attr.typ.equals(getCommonSupertypeType())) {
-//				sb.append("	"  +attr.returns + " " + attr.attr + "();\n");
-//			}
-//		}
+		
+		// replace method
+		
+		sb.append("	void replaceBy("+getCommonSupertypeType()+" other);\n");
+//		
 		
 		generateMatcher(commonSuperType, sb);
 		generateVisitorInterface(commonSuperType, sb);
