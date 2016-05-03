@@ -1,23 +1,42 @@
 apply plugin: 'java'
 apply plugin: 'maven'
+apply plugin: 'antlr'
 
-group = 'de.softech'
+group = 'com.github.peterzeller'
 version = '0.1.0'
 
 description = """Abstract Syntax Generator"""
 
+
+String genDir = "$projectDir/src-generated"
+
 sourceCompatibility = 1.6
 targetCompatibility = 1.6
 
-
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+            srcDir genDir
+        }
+    }
+}
 
 repositories {
-        
-     maven { url "http://repo.maven.apache.org/maven2" }
+    mavenCentral()
 }
 dependencies {
-    compile group: 'org.antlr', name: 'antlr4', version:'4.5'
-    compile group: 'org.antlr', name: 'antlr4-runtime', version:'4.5'
+    antlr 'org.antlr:antlr4:4.5.3'
+    compile 'org.antlr:antlr4-runtime:4.5.3'
     compile group: 'com.google.guava', name: 'guava-collections', version:'r03'
     compile group: 'com.google.guava', name: 'guava-io', version:'r03'
+}
+
+
+generateGrammarSource {
+    outputDirectory = file(genDir)
+}
+
+clean.doFirst {
+    delete genDir
 }

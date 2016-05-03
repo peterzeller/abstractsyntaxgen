@@ -1,13 +1,14 @@
 *.class
 
 .gradle/
-
+.idea/
 .classpath
 .project
 .settings/
 *.sh
 target/
-
+build/
+src-generated/
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/

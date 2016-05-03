@@ -5,6 +5,9 @@ Parser for asg grammars
 */	
 
 @header {
+	package asg.grammars.parser;
+
+
 	import asg.grammars.ast.*;
 	import com.google.common.collect.Lists;
 	import java.util.ArrayList;

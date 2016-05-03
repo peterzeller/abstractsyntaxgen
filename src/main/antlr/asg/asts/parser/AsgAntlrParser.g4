@@ -3,6 +3,8 @@ grammar AsgAntlrParser;
 	
 
 @header {
+	package asg.asts.parser;
+
 	import asg.asts.ast.*;
 	import com.google.common.collect.Lists;
 	import java.util.ArrayList;
