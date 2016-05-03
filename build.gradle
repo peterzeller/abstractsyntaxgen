@@ -1,0 +1,23 @@
+apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'de.softech'
+version = '0.1.0'
+
+description = """Abstract Syntax Generator"""
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+
+
+repositories {
+        
+     maven { url "http://repo.maven.apache.org/maven2" }
+}
+dependencies {
+    compile group: 'org.antlr', name: 'antlr4', version:'4.5'
+    compile group: 'org.antlr', name: 'antlr4-runtime', version:'4.5'
+    compile group: 'com.google.guava', name: 'guava-collections', version:'r03'
+    compile group: 'com.google.guava', name: 'guava-io', version:'r03'
+}
