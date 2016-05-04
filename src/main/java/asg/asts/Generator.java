@@ -209,8 +209,6 @@ public class Generator {
 		generateCyclicDependencyError();
 		
 		
-		generatePropertyInterfaces();
-		
 		generateInterfaceTypes();
 		
 		generateBaseClasses();
@@ -250,22 +248,6 @@ public class Generator {
 
 
 
-	private void generatePropertyInterfaces() {
-		for (Parameter p : parameters.values()) {
-			String interfaceName = getPropertyInterfaceName(p);
-			StringBuilder sb = new StringBuilder();
-			printProlog(sb);
-			sb.append("public interface ");
-			sb.append(interfaceName);
-			sb.append(" extends ");
-			sb.append(getCommonSupertypeType());
-			sb.append(" { ");
-			sb.append("	void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ");\n");
-			sb.append("	" + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "();\n");
-			sb.append("}\n");
-			fileGenerator.createFile(interfaceName + ".java", sb);
-		}
-	}
 
 	/**
 	 * calculate which properties exist
@@ -482,8 +464,8 @@ public class Generator {
 
 	private void createGetSetParentMethods(StringBuilder sb) {
 		sb.append("	private " + getCommonSupertypeType() + " parent;\n");
-		sb.append("	public " + getNullableAnnotation() + " " + getCommonSupertypeType() + " getParent() { return parent; }\n");
-		sb.append("	public void setParent(" + getNullableAnnotation() + " " + getCommonSupertypeType() + " parent) {\n" +
+		sb.append("	public " + getNullableAnnotation()  + getCommonSupertypeType() + " getParent() { return parent; }\n");
+		sb.append("	public void setParent(" + getNullableAnnotation()  + getCommonSupertypeType() + " parent) {\n" +
 				"		if (parent != null && this.parent != null) {\n" +
 				"			throw new Error(\"Parent of \" + this + \" already set: \" + this.parent + \"\\ntried to change to \" + parent);\n" +
 				"		}\n" +
@@ -710,20 +692,19 @@ public class Generator {
 			sb.append(supertype.getName(typePrefix));
 			first = false;
 		}
-		// create getters and setters for parameters:
-//		for (Parameter p : c.parameters) {
-//			sb.append("	void set" + toFirstUpper(p.name) + "(" + p.typ + " " + p.name + ");\n");
-//			sb.append("	" + p.typ + " get" + toFirstUpper(p.name) + "();\n");
-//		}
-		for(Parameter p: c.parameters) {
-			sb.append(", ");
-			sb.append(getPropertyInterfaceName(p));
-		}
-		
+
+
 		sb.append(" {\n");
 
+
+		// create getters and setters for parameters:
+		for (Parameter p : c.parameters) {
+			sb.append("	void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ");\n");
+			sb.append("	" + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "();\n");
+		}
+
 		// getParent method:
-		sb.append("	" + getNullableAnnotation() + " " + getCommonSupertypeType() + " getParent();\n");
+		sb.append("	" + getNullableAnnotation()  + getCommonSupertypeType() + " getParent();\n");
 
 		
 		
@@ -743,10 +724,6 @@ public class Generator {
 		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
 	}
 
-	private String getPropertyInterfaceName(Parameter p) {
-		return getCommonSupertypeType()+"With"+ toFirstUpper(p.name);
-	}
-	
 	private void generateVisitorInterface(AstEntityDefinition d, StringBuilder sb) {
 		
 //		sb.append("	interface SpecificVisitor {\n");
@@ -870,18 +847,14 @@ public class Generator {
 		Set<Parameter> attributes = calculateAttributes(c);
 		
 		// create getters and setters for parameters:
-//		for (Parameter p : attributes) {
-//			sb.append("	void set" + toFirstUpper(p.name) + "(" + p.typ + " " + p.name + ");\n");
-//			sb.append("	" + p.typ + " get" + toFirstUpper(p.name) + "();\n");
-//		} 
 		for (Parameter p : attributes) {
-			sb.append(", ");
-			sb.append(getPropertyInterfaceName(p));
+			sb.append("	void set" + toFirstUpper(p.name) + "(" + p.getTyp() + " " + p.name + ");\n");
+			sb.append("	" + p.getTyp() + " get" + toFirstUpper(p.name) + "();\n");
 		}
 		sb.append("{\n");
 
 		// getParent method:
-		sb.append("	" + getNullableAnnotation() + " " + getCommonSupertypeType() + " getParent();\n");
+		sb.append("	" + getNullableAnnotation()  + getCommonSupertypeType() + " getParent();\n");
 		
 		
 		
@@ -1084,14 +1057,14 @@ public class Generator {
 		printProlog(sb);
 		
 		sb.append("public interface "+getCommonSupertypeType()+" {\n" +
-				"	" + getNullableAnnotation() + " "+getCommonSupertypeType()+" getParent();\n" +
+				"	" + getNullableAnnotation() +getCommonSupertypeType()+" getParent();\n" +
 				"	"+getCommonSupertypeType()+" copy();\n" +
 				"	int size();\n" +
 				"	void clearAttributes();\n" +
 				"	void clearAttributesLocal();\n" +
 				"	"+getCommonSupertypeType()+" get(int i);\n"+
 				"	"+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElement);\n"+
-				"	void setParent(" + getNullableAnnotation() + " "+getCommonSupertypeType()+" parent);\n");
+				"	void setParent(" + getNullableAnnotation() +getCommonSupertypeType()+" parent);\n");
 		
 		// replace method
 		
