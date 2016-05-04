@@ -1,6 +1,6 @@
 package asg.asts;
 
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -467,7 +467,8 @@ public class Generator {
 		sb.append("	public " + getNullableAnnotation()  + getCommonSupertypeType() + " getParent() { return parent; }\n");
 		sb.append("	public void setParent(" + getNullableAnnotation()  + getCommonSupertypeType() + " parent) {\n" +
 				"		if (parent != null && this.parent != null) {\n" +
-				"			throw new Error(\"Parent of \" + this + \" already set: \" + this.parent + \"\\ntried to change to \" + parent);\n" +
+				"			throw new Error(\"Cannot change parent of element \" + this.getClass().getSimpleName() + \", as it is already used in another tree.\"\n" +
+				"				+ \"Use the copy method to create a new tree or remove the tree from its old parent or set the parent to null before moving the tree. \");\n" +
 				"		}\n" +
 				"		this.parent = parent;\n" +	
 				"	}\n\n");
@@ -630,18 +631,14 @@ public class Generator {
 	}
 	
 	private void createAcceptMethods(ConstructorDef c, StringBuilder sb) {
-		for (AstEntityDefinition parent : transientChildTypes.keySet()) {
-			if (transientChildTypes.get(parent).contains(c) && hasVisitor(parent)) {
-				sb.append("	@Override public void accept(" + parent.getName(typePrefix)+".Visitor v) {\n");
-				for (Parameter p : c.parameters) {
-					if (prog.hasElement(p.getTyp()) && !p.isRef) {
-						sb.append("		" + p.name + ".accept(v);\n");
-					}
-				}
-				sb.append("		v.visit(this);\n");
-				sb.append("	}\n");
+		sb.append("	@Override public void accept(Visitor v) {\n");
+		for (Parameter p : c.parameters) {
+			if (prog.hasElement(p.getTyp()) && !p.isRef) {
+				sb.append("		" + p.name + ".accept(v);\n");
 			}
 		}
+		sb.append("		v.visit(this);\n");
+		sb.append("	}\n");
 	}
 
 	private boolean hasVisitor(AstEntityDefinition e) {
@@ -714,9 +711,7 @@ public class Generator {
 		// clear attributes method
 		sb.append("	void clearAttributes();\n");
 		sb.append("	void clearAttributesLocal();\n");
-		
-		generateVisitorInterface(c, sb);
-		
+
 
 		createAttributeStubs(c, sb);
 		
@@ -725,30 +720,17 @@ public class Generator {
 	}
 
 	private void generateVisitorInterface(AstEntityDefinition d, StringBuilder sb) {
-		
-//		sb.append("	interface SpecificVisitor {\n");
-//		sb.append("		void visit(" +d.getName()+" " + toFirstLower(d.getName()) +");\n");
-//		sb.append("	}\n");
-		
-		// create accept methods for every Visitor type that could get here:
-		for (AstEntityDefinition parent : transientChildTypes.keySet()) {
-			if (transientChildTypes.get(parent).contains(d) && hasVisitor(parent)) {
-				sb.append("	public abstract void accept(" + parent.getName(typePrefix)+".Visitor v);\n");
-			}
-		}
-//		sb.append("	public abstract void accept(Visitor v);\n");
-		
-		if (!hasVisitor(d)) {
-			return;
-		}
-		
-		
-		Collection<AstEntityDefinition> childTypes = transientChildTypes.get(d);
+		sb.append("	public abstract void accept(Visitor v);\n");
+
+
 		// Visitor interface
 		sb.append("	public interface Visitor");
 		sb.append(" {\n");
 		sb.append("");
-		for (AstEntityDefinition contained : childTypes) {
+		List<AstEntityDefinition> defs = new ArrayList<AstEntityDefinition>(prog.constructorDefs);
+		defs.addAll(prog.listDefs);
+
+		for (AstEntityDefinition contained : defs) {
 			if (contained instanceof AstBaseTypeDefinition) {
 				AstBaseTypeDefinition c = (AstBaseTypeDefinition) contained;
 				sb.append("		void visit(" +c.getName(typePrefix)+" " + toFirstLower(c.getName()) +");\n");
@@ -758,7 +740,7 @@ public class Generator {
 		
 		// Default Visitor
 		sb.append("	public static abstract class DefaultVisitor implements Visitor {\n");
-		for (AstEntityDefinition contained : childTypes) {
+		for (AstEntityDefinition contained : defs) {
 			if (contained instanceof AstBaseTypeDefinition) {
 				AstBaseTypeDefinition c = (AstBaseTypeDefinition) contained;
 				sb.append("		@Override public void visit(" +c.getName(typePrefix)+" " + toFirstLower(c.getName()) +") {}\n");
@@ -863,9 +845,7 @@ public class Generator {
 		// copy method
 		sb.append("	" + getCommonSupertypeType() + " copy();\n");
 
-		
-		generateVisitorInterface(c, sb);
-		
+
 		createAttributeStubs(c, sb);
 		
 		
@@ -964,16 +944,12 @@ public class Generator {
 		
 		
 		// accept methods for visitors
-		for (AstEntityDefinition parent : transientChildTypes.keySet()) {
-			if (transientChildTypes.get(parent).contains(l) && hasVisitor(parent)) {
-				sb.append("	@Override public void accept(" + parent.getName(typePrefix)+".Visitor v) {\n");
-				sb.append("		for (" +printType(l.itemType)+ " i : this ) {\n");
-				sb.append("			i.accept(v);\n");
-				sb.append("		}\n");
-				sb.append("		v.visit(this);\n");
-				sb.append("	}\n");
-			}
-		}
+		sb.append("	@Override public void accept(Visitor v) {\n");
+		sb.append("		for (" +printType(l.itemType)+ " i : this ) {\n");
+		sb.append("			i.accept(v);\n");
+		sb.append("		}\n");
+		sb.append("		v.visit(this);\n");
+		sb.append("	}\n");
 		createClearMethod(l, sb);
 		createAttributeImpl(l, sb);
 		
@@ -1030,9 +1006,7 @@ public class Generator {
 		sb.append("		}\n");
 		sb.append("		return result;\n");
 		sb.append("	}\n");
-		
-		generateVisitorInterface(l, sb);
-		
+
 		createAttributeStubs(l, sb);
 		
 		
