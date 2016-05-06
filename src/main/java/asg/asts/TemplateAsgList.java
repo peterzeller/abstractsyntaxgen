@@ -2,7 +2,7 @@ package asg.asts;
 
 public class TemplateAsgList {
 
-	public static void writeTo(StringBuilder sb) {
+	public static void writeTo(StringBuilder sb, String commonSupertypeName) {
 		sb.append("import java.util.Collection;\n");
 		sb.append("import java.util.Iterator;\n");
 		sb.append("import java.util.ArrayList;\n");
@@ -244,6 +244,26 @@ public class TemplateAsgList {
 		sb.append("	\n");
 		sb.append("	\n");
 		sb.append("	\n");
+
+
+
+		sb.append("	public boolean structuralEquals(" + commonSupertypeName + " e) {\n");
+		sb.append("		if (e instanceof AsgList) {\n");
+		sb.append("			AsgList o = (AsgList) e;\n");
+		sb.append("			if (o.size() != size()) {\n");
+		sb.append("				return false;\n");
+		sb.append("			}\n");
+		sb.append("			for (int i=0; i<size(); i++) {\n");
+		sb.append("				" + commonSupertypeName + " a = (" + commonSupertypeName + ") get(i);\n");
+		sb.append("				" + commonSupertypeName + " b = (" + commonSupertypeName + ") o.get(i);\n");
+		sb.append("				if (!a.structuralEquals(b)) {\n");
+		sb.append("					return false;\n");
+		sb.append("				}\n");
+		sb.append("			}\n");
+		sb.append("			return true;\n");
+		sb.append("		}\n");
+		sb.append("		return false;\n");
+		sb.append("	}\n");
 		sb.append("}\n");
 
 		

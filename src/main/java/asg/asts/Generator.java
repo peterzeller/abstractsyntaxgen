@@ -1124,7 +1124,7 @@ public class Generator {
 	private void generateStandardList() {
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
-		TemplateAsgList.writeTo(sb);
+		TemplateAsgList.writeTo(sb, getCommonSupertypeType());
 		fileGenerator.createFile("AsgList.java", sb);
 	}
 	
