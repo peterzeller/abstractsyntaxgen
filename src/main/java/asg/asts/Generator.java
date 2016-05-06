@@ -6,20 +6,11 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import asg.asts.ast.*;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
-
-import asg.asts.ast.Alternative;
-import asg.asts.ast.AstBaseTypeDefinition;
-import asg.asts.ast.AstEntityDefinition;
-import asg.asts.ast.AttributeDef;
-import asg.asts.ast.CaseDef;
-import asg.asts.ast.ConstructorDef;
-import asg.asts.ast.ListDef;
-import asg.asts.ast.Parameter;
-import asg.asts.ast.Program;
 
 public class Generator {
 
@@ -307,12 +298,61 @@ public class Generator {
 		
 		// toString method
 		createToString(c, sb);
+
+		createStructuralEquals(c, sb);
 		
-		createAttributeImpl(c, sb);		
+		createAttributeImpl(c, sb);
+		createFieldsImpl(c, sb);
 		
 		sb.append("}\n");
 		fileGenerator.createFile(c.getName(typePrefix) + "Impl.java", sb);
 	}
+
+	private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
+		sb.append("	public boolean structuralEquals(" + getCommonSupertypeType() + " e) {\n");
+
+		if (c.parameters.isEmpty()) {
+			sb.append("		return e instanceof " + c.getName(typePrefix) + ";\n");
+		} else {
+			sb.append("		if (e instanceof " + c.getName(typePrefix) + ") {\n");
+			sb.append("			" + c.getName(typePrefix) + " o = (" + c.getName(typePrefix) + ") e;\n");
+			sb.append("			return ");
+			for (Parameter p : c.parameters) {
+				if (p != c.parameters.get(0)) {
+					sb.append("\n			    && ");
+				}
+				if (prog.hasElement(p.getTyp()) && !p.isRef) {
+					sb.append("this." + p.name + ".structuralEquals(o.get"+toFirstUpper(p.name)+"())");
+				} else {
+					sb.append("java.util.Objects.equals(" + p.name + ", o.get"+toFirstUpper(p.name)+"())");
+				}
+			}
+			sb.append(";\n");
+			sb.append("		} else {\n");
+			sb.append("			return false;\n");
+			sb.append("		}\n");
+		}
+		sb.append("	}\n");
+	}
+
+	private void createFieldsImpl(AstBaseTypeDefinition c, StringBuilder sb) {
+		for (FieldDef field : prog.fieldDefs) {
+			if (!hasField(c, field)) {
+				continue;
+			}
+			sb.append("	private " + field.getFieldType() + " " + field.getFieldName() + ";\n");
+			sb.append("	/** " + field.getDoc() + "*/\n");
+			sb.append("	public " + field.getFieldType() + " get" + toFirstUpper(field.getFieldName()) + "() {\n");
+			sb.append("		return " + field.getFieldName() + ";\n");
+			sb.append("	}\n");
+			sb.append("	/** " + field.getDoc() + "*/\n");
+			sb.append("	public void set" + toFirstUpper(field.getFieldName())
+					+ "(" + field.getFieldType() + " " + field.getFieldName() + ") {\n");
+			sb.append("		this." + field.getFieldName() + " = " + field.getFieldName() + ";\n");
+			sb.append("	}\n");
+		}
+	}
+
 
 	private void createAttributeImpl(AstBaseTypeDefinition c, StringBuilder sb) {
 		for (AttributeDef attr : prog.attrDefs) {
@@ -629,7 +669,16 @@ public class Generator {
 		hasAttribute |= attr.typ.equals(getCommonSupertypeType());
 		return hasAttribute;
 	}
-	
+
+	private boolean hasField(AstBaseTypeDefinition c, FieldDef attr) {
+		boolean hasAttribute = attr.getTyp().equals(c.getName());
+		for (AstEntityDefinition sup : transientSuperTypes.get(c)) {
+			hasAttribute |= attr.getTyp().equals(sup.getName());
+		}
+		hasAttribute |= attr.getTyp().equals(getCommonSupertypeType());
+		return hasAttribute;
+	}
+
 	private void createAcceptMethods(ConstructorDef c, StringBuilder sb) {
 		sb.append("	@Override public void accept(Visitor v) {\n");
 		for (Parameter p : c.parameters) {
@@ -714,6 +763,7 @@ public class Generator {
 
 
 		createAttributeStubs(c, sb);
+		createFieldStubs(c, sb);
 		
 		sb.append("}\n");
 		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
@@ -847,6 +897,7 @@ public class Generator {
 
 
 		createAttributeStubs(c, sb);
+		createFieldStubs(c, sb);
 		
 		
 		sb.append("}\n");
@@ -881,6 +932,18 @@ public class Generator {
 			if (attr.typ.equals(c.getName())) {
 				sb.append("/** " + attr.comment + "*/\n");
 				sb.append("	public abstract " + attr.returns + " " + attr.attr + "("+printParams(attr.parameters)+");\n");
+			}
+		}
+	}
+
+	private void createFieldStubs(AstEntityDefinition c, StringBuilder sb) {
+		for (FieldDef attr : prog.fieldDefs) {
+			if (attr.getTyp().equals(c.getName())) {
+				sb.append("	/** " + attr.getDoc() + "*/\n");
+				sb.append("	public abstract " + attr.getFieldType() + " get" + toFirstUpper(attr.getFieldName()) + "();\n");
+				sb.append("	/** " + attr.getDoc() + "*/\n");
+				sb.append("	public abstract void set" + toFirstUpper(attr.getFieldName())
+						+ "(" +attr.getFieldType() + " " + attr.getFieldName() + ");\n");
 			}
 		}
 	}
@@ -952,6 +1015,7 @@ public class Generator {
 		sb.append("	}\n");
 		createClearMethod(l, sb);
 		createAttributeImpl(l, sb);
+		createFieldsImpl(l, sb);
 		
 		// toString method
 		createToString(l, sb);
@@ -1008,7 +1072,7 @@ public class Generator {
 		sb.append("	}\n");
 
 		createAttributeStubs(l, sb);
-		
+		createFieldStubs(l, sb);
 		
 		sb.append("}\n");
 		fileGenerator.createFile(l.getName(typePrefix) + ".java", sb);
@@ -1041,13 +1105,15 @@ public class Generator {
 				"	void setParent(" + getNullableAnnotation() +getCommonSupertypeType()+" parent);\n");
 		
 		// replace method
-		
 		sb.append("	void replaceBy("+getCommonSupertypeType()+" other);\n");
-//		
-		
+
+		// structural equals method
+		sb.append("	boolean structuralEquals("+getCommonSupertypeType()+" elem);\n");
+
 		generateMatcher(commonSuperType, sb);
 		generateVisitorInterface(commonSuperType, sb);
 		createAttributeStubs(commonSuperType, sb);
+		createFieldStubs(commonSuperType, sb);
 		sb.append("}\n\n");
 		
 		

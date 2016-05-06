@@ -1,9 +1,6 @@
 package asg.asts.ast;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 
 public class Program {
@@ -12,10 +9,11 @@ public class Program {
 	public final List<CaseDef> caseDefs = new LinkedList<CaseDef>();
 	public final List<ConstructorDef> constructorDefs = new LinkedList<ConstructorDef>();
 	public final List<AttributeDef> attrDefs = new LinkedList<AttributeDef>();
-	public final Map<String, AstEntityDefinition> definitions = new HashMap<String, AstEntityDefinition>(); 
+	public final List<FieldDef> fieldDefs = new ArrayList<FieldDef>();
+	public final Map<String, AstEntityDefinition> definitions = new HashMap<String, AstEntityDefinition>();
 	private String packageName;
 	private String typePrefix = "";
-	
+
 
 	public Program(String packageName) {
 		this.packageName = packageName;
@@ -81,6 +79,11 @@ public class Program {
 		attrDefs.add(new AttributeDef(parameters, typ, attr, docStr, returnType, implementedBy, circular));
 	}
 
+	public void addAttributeField(String fieldType, String typ, String fieldName, String doc) {
+		String docStr = doc != null ? doc : "";
+		fieldDefs.add(new FieldDef(fieldType, typ, fieldName, doc));
+		// ($t.name, $elem.text, $attrName.text, $doc.text)
+	}
 	
 	
 	
@@ -140,7 +143,6 @@ public class Program {
 		this.typePrefix = typePrefix;
 	}
 
-	
 
-	
+
 }

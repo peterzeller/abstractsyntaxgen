@@ -105,7 +105,12 @@ attributeDef[Program prog]:
 	{
 		prog.addAttribute(parameters, $elem.text, $attrName.text, $returnType.name, $implementedBy.s, $doc.text, circ);	
 	}
-	
+	|
+	(doc=STRVAL)?
+	t=javaType elem=ID '.' attrName=ID
+	{
+	    prog.addAttributeField($t.name, $elem.text, $attrName.text, $doc.text);
+	}
 	;
 	
 javaType returns [String name]: 
