@@ -1,5 +1,6 @@
 apply plugin: 'java'
 apply plugin: 'maven'
+apply plugin: 'signing'
 apply plugin: 'antlr'
 
 group = 'com.github.peterzeller'
@@ -28,8 +29,7 @@ repositories {
 dependencies {
     antlr 'org.antlr:antlr4:4.5.3'
     compile 'org.antlr:antlr4-runtime:4.5.3'
-    compile group: 'com.google.guava', name: 'guava-collections', version:'r03'
-    compile group: 'com.google.guava', name: 'guava-io', version:'r03'
+    compile 'com.google.guava:guava:19.0'
 }
 
 
@@ -39,4 +39,84 @@ generateGrammarSource {
 
 clean.doFirst {
     delete genDir
+}
+
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+
+def isReleaseBuild() {
+    return version.contains("SNAPSHOT") == false
+}
+
+signing {
+    required { isReleaseBuild() && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+    // sign configurations.runtimeArchives
+}
+
+
+// task for uploading archives to maven:
+// taken from http://jedicoder.blogspot.de/2011/11/automated-gradle-project-deployment-to.html
+// taken from http://central.sonatype.org/pages/gradle.html
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+//             repository(url : "file:///home/peter/temp/mvn/")
+
+            pom.project {
+                name 'Abstract Syntax Tree Generator' // TODO name and description
+                packaging 'jar'
+                description 'Generated Java classes to represent abstract syntax trees.'
+                url 'https://github.com/peterzeller/abstractsyntaxgen'
+
+                scm {
+                    url 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
+                    connection 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
+                    developerConnection 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'pzeller'
+                        name 'Peter Zeller'
+                        email 'p_zeller@cs.uni-kl.de'
+                    }
+                }
+            }
+
+        }
+    }
 }
