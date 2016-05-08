@@ -875,15 +875,17 @@ public class Generator {
 			sb.append(supertype.getName(typePrefix));
 			first = false;
 		}
+
+		sb.append("{\n");
+
 		// calculate common attributes:
 		Set<Parameter> attributes = calculateAttributes(c);
-		
+
 		// create getters and setters for parameters:
 		for (Parameter p : attributes) {
 			sb.append("	void set" + toFirstUpper(p.name) + "(" + p.getTyp() + " " + p.name + ");\n");
 			sb.append("	" + p.getTyp() + " get" + toFirstUpper(p.name) + "();\n");
 		}
-		sb.append("{\n");
 
 		// getParent method:
 		sb.append("	" + getNullableAnnotation()  + getCommonSupertypeType() + " getParent();\n");
