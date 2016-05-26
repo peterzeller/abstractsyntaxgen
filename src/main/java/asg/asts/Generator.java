@@ -212,7 +212,7 @@ public class Generator {
 	}
 
 	private void createFakeSuperclass() {
-		commonSuperType = new CaseDef("Element");
+		commonSuperType = new CaseDef(getCommonSupertypeType());
 		for (CaseDef d : prog.caseDefs) {
 			commonSuperType.addAlternative(d.getName());
 		}
@@ -661,21 +661,23 @@ public class Generator {
 		sb.append("	}\n");
 	}
 
-	private boolean hasAttribute(AstBaseTypeDefinition c, AttributeDef attr) {
+	private boolean hasAttribute(AstEntityDefinition c, AttributeDef attr) {
 		boolean hasAttribute = attr.typ.equals(c.getName());
 		for (AstEntityDefinition sup : transientSuperTypes.get(c)) {
 			hasAttribute |= attr.typ.equals(sup.getName());
 		}
 		hasAttribute |= attr.typ.equals(getCommonSupertypeType());
+		hasAttribute |= attr.typ.equals("Element");
 		return hasAttribute;
 	}
 
-	private boolean hasField(AstBaseTypeDefinition c, FieldDef attr) {
+	private boolean hasField(AstEntityDefinition c, FieldDef attr) {
 		boolean hasAttribute = attr.getTyp().equals(c.getName());
 		for (AstEntityDefinition sup : transientSuperTypes.get(c)) {
 			hasAttribute |= attr.getTyp().equals(sup.getName());
 		}
 		hasAttribute |= attr.getTyp().equals(getCommonSupertypeType());
+		hasAttribute |= attr.getTyp().equals("Element");
 		return hasAttribute;
 	}
 
@@ -883,8 +885,8 @@ public class Generator {
 
 		// create getters and setters for parameters:
 		for (Parameter p : attributes) {
-			sb.append("	void set" + toFirstUpper(p.name) + "(" + p.getTyp() + " " + p.name + ");\n");
-			sb.append("	" + p.getTyp() + " get" + toFirstUpper(p.name) + "();\n");
+			sb.append("	void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ");\n");
+			sb.append("	" + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "();\n");
 		}
 
 		// getParent method:
@@ -931,7 +933,7 @@ public class Generator {
 	
 	private void createAttributeStubs(AstEntityDefinition c, StringBuilder sb) {
 		for (AttributeDef attr : prog.attrDefs) {
-			if (attr.typ.equals(c.getName())) {
+			if (hasAttribute(c, attr)) {
 				sb.append("/** " + attr.comment + "*/\n");
 				sb.append("	public abstract " + attr.returns + " " + attr.attr + "("+printParams(attr.parameters)+");\n");
 			}
@@ -940,7 +942,7 @@ public class Generator {
 
 	private void createFieldStubs(AstEntityDefinition c, StringBuilder sb) {
 		for (FieldDef attr : prog.fieldDefs) {
-			if (attr.getTyp().equals(c.getName())) {
+			if (hasField(c, attr)) {
 				sb.append("	/** " + attr.getDoc() + "*/\n");
 				sb.append("	public abstract " + attr.getFieldType() + " get" + toFirstUpper(attr.getFieldName()) + "();\n");
 				sb.append("	/** " + attr.getDoc() + "*/\n");
