@@ -212,7 +212,7 @@ public class Generator {
 	}
 
 	private void createFakeSuperclass() {
-		commonSuperType = new CaseDef(getCommonSupertypeType());
+		commonSuperType = new CaseDef("Element");
 		for (CaseDef d : prog.caseDefs) {
 			commonSuperType.addAlternative(d.getName());
 		}
@@ -1140,7 +1140,7 @@ public class Generator {
 	}
 
 	private String getCommonSupertypeType() {
-		return  toFirstUpper(mainName) + "Element";
+		return  typePrefix + "Element";
 	}
 
 	private void printProlog(StringBuilder sb) {
