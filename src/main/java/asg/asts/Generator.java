@@ -14,7 +14,7 @@ import com.google.common.collect.Sets;
 
 public class Generator {
 
-	
+
 	private Multimap<CaseDef, AstBaseTypeDefinition> baseTypes =   HashMultimap.create();
 	private Multimap<AstEntityDefinition, AstEntityDefinition> directChildTypes = HashMultimap.create();
 
@@ -28,23 +28,23 @@ public class Generator {
 	private Multimap<AstEntityDefinition, AstEntityDefinition> transientChildTypes = HashMultimap.create();
 	private Multimap<AstEntityDefinition, AstEntityDefinition> transientSubTypes;
 	private Multimap<AstEntityDefinition, AstEntityDefinition> transientSuperTypes;
-	
+
 	private Map<String, Parameter> parameters = Maps.newLinkedHashMap();
 	private final FileGenerator fileGenerator;
 	private String typePrefix;
 	private CaseDef commonSuperType;
-	
-	
+
+
 	public Generator(FileGenerator fileGenerator, Program prog, String p_outputFolder) {
 		this.fileGenerator = fileGenerator;
-		
+
 		this.prog = prog;
 		this.typePrefix = prog.getTypePrefix();
 		this.packageName = prog.getPackageName();
 		this.mainName = prog.getFactoryName();
 	}
 
-	
+
 
 	private void caclulateCaseDefBaseTypes(CaseDef caseDef) {
 		if (baseTypes.containsKey(caseDef)) {
@@ -102,7 +102,7 @@ public class Generator {
 				addContainmentInfo(l, prog.getElement(l.itemType));
 			}
 		}
-		
+
 		calculateTransientChildTypes();
 	}
 
@@ -115,31 +115,31 @@ public class Generator {
 			for (Entry<AstEntityDefinition, AstEntityDefinition> e : transientChildTypes.entries()) {
 				AstEntityDefinition parent = e.getKey();
 				AstEntityDefinition child = e.getValue();
-				
+
 				// reflexive:
 				newTransitions.put(parent, parent);
 				newTransitions.put(child, child);
-				
+
 				// add transitive childs
 				for (AstEntityDefinition trChild : transientChildTypes.get(child)) {
 					newTransitions.put(parent, trChild);
 				}
-				
+
 				// add subtypes of child:
 				for (AstEntityDefinition sub : transientSubTypes.get(child)) {
 					newTransitions.put(parent, sub);
 				}
-				
+
 				// add supertypes of parent:
 				for (AstEntityDefinition sup : transientSuperTypes.get(parent)) {
 					newTransitions.put(sup, child);
 				}
 			}
 			changed = transientChildTypes.putAll(newTransitions);
-		} while (changed); 
+		} while (changed);
 		// must terminate because there are only finitely many possible transitions
 		// and every iteration adds at least one
-		// runtime might be quite bad however			
+		// runtime might be quite bad however
 	}
 
 	private void addContainmentInfo(AstEntityDefinition parent, AstEntityDefinition child) {
@@ -162,14 +162,14 @@ public class Generator {
 		for (CaseDef caseDef : prog.caseDefs) {
 			caclulateCaseDefBaseTypes(caseDef);
 		}
-		
+
 		// calculate interfaces for base types:
 		for (CaseDef caseDef : prog.caseDefs) {
 			for (AstBaseTypeDefinition base : baseTypes.get(caseDef)) {
 				interfaceTypes.put(base, caseDef);
 			}
 		}
-		
+
 		transientSubTypes = transientClosure(directSubTypes);
 		transientSuperTypes = transientClosure(directSuperTypes);
 	}
@@ -180,7 +180,7 @@ public class Generator {
 			sb.append("	@Override public <T> T match(" + superType.getName(typePrefix) + ".Matcher<T> matcher) {\n");
 			sb.append("		return matcher.case_" + c.getName() + "(this);\n");
 			sb.append("	}\n");
-			
+
 			sb.append("	@Override public void match(" + superType.getName(typePrefix) + ".MatcherVoid matcher) {\n");
 			sb.append("		matcher.case_" + c.getName() + "(this);\n");
 			sb.append("	}\n\n");
@@ -189,26 +189,26 @@ public class Generator {
 
 	public void generate() {
 		createFakeSuperclass();
-		
+
 		calculateProperties();
 		calculateSubTypes();
 		calculateContainments();
-		
+
 //		generatePackageInfo(); // TODO add flag
 		generateStandardClasses();
 		generateStandardList();
 		generateCyclicDependencyError();
-		
-		
+
+
 		generateInterfaceTypes();
-		
+
 		generateBaseClasses();
-		
+
 		generateLists();
-		
-		
+
+
 		generateFactoryClass();
-		
+
 	}
 
 	private void createFakeSuperclass() {
@@ -232,8 +232,8 @@ public class Generator {
 		sb.append(FileGenerator.PARSEQ_COMMENT + "\n");
 		sb.append("@org.eclipse.jdt.annotation.NonNullByDefault\n");
 		sb.append("package " + packageName + ";\n\n");
-		
-		
+
+
 		fileGenerator.createFile("package-info.java", sb);
 	}
 
@@ -268,42 +268,42 @@ public class Generator {
 
 		// get/set parent method:
 		createGetSetParentMethods(sb);
-		
+
 		// replaceBy method:
 		createReplaceByMethod(sb);
 
 		// create getters and setters for parameters:
 		createGetterAndSetterMethods(c, sb);
-		
+
 		//get method
 		int childCount = createGetMethod(c, sb);
 		// set method
 		createSetMethod(c, sb);
-		
+
 		//size method
 		createSizeMethod(sb, childCount);
-		
+
 		//copy method
 		createCopyMethod(c, sb);
-		
+
 		// clear attributes method
 		createClearMethod(c, sb);
-		
-		
+
+
 		// accept method for visitor
 		createAcceptMethods(c, sb);
-		
+
 		// match methods for switch
 		createMatchMethods(c, sb);
-		
+
 		// toString method
 		createToString(c, sb);
 
 		createStructuralEquals(c, sb);
-		
+
 		createAttributeImpl(c, sb);
 		createFieldsImpl(c, sb);
-		
+
 		sb.append("}\n");
 		fileGenerator.createFile(c.getName(typePrefix) + "Impl.java", sb);
 	}
@@ -356,7 +356,7 @@ public class Generator {
 
 	private void createAttributeImpl(AstBaseTypeDefinition c, StringBuilder sb) {
 		for (AttributeDef attr : prog.attrDefs) {
-			
+
 			if (hasAttribute(c, attr)) {
 				if (attr.parameters == null) {
 					sb.append("// circular = " + attr.circular + "\n");
@@ -391,7 +391,7 @@ public class Generator {
 						sb.append("						continue;\n");
 						sb.append("					}\n");
 						sb.append("				}\n");
-						sb.append("				zzattr_" + attr.attr + "_cache = r;\n");	
+						sb.append("				zzattr_" + attr.attr + "_cache = r;\n");
 						sb.append("				break;\n");
 						sb.append("			}\n");
 						sb.append("			zzattr_" + attr.attr +"_state = 2;\n");
@@ -420,7 +420,7 @@ public class Generator {
 	private String printArgs(List<Parameter> parameters2) {
 		String result = "";
 		for (Parameter p : parameters2) {
-			result += ", " + p.name;  
+			result += ", " + p.name;
 		}
 		return result;
 	}
@@ -435,7 +435,7 @@ public class Generator {
 			if (!first) {
 				result +=", ";
 			}
-			result += printType(p.getTyp()) + " " + p.name;  
+			result += printType(p.getTyp()) + " " + p.name;
 			first = false;
 		}
 		return result;
@@ -453,7 +453,7 @@ public class Generator {
 		}
 		sb.append(") {\n");
 		for (Parameter p : c.parameters) {
-			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) { 
+			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
 				// add null checks for non primitive types:
 				sb.append("		if (" + p.name	+ " == null)\n");
 				sb.append("			throw new IllegalArgumentException(\"Element "+p.name+" must not be null.\");\n");
@@ -463,9 +463,9 @@ public class Generator {
 			sb.append("		this." + p.name + " = " + p.name + ";\n");
 		}
 		for (Parameter p : c.parameters) {
-			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) { 
+			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
 				if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
-					// we have a generated type. 
+					// we have a generated type.
 					// the new element has a new parent:
 					sb.append("		" + p.name + ".setParent(this);\n");
 				}
@@ -510,11 +510,11 @@ public class Generator {
 				"			throw new Error(\"Cannot change parent of element \" + this.getClass().getSimpleName() + \", as it is already used in another tree.\"\n" +
 				"				+ \"Use the copy method to create a new tree or remove the tree from its old parent or set the parent to null before moving the tree. \");\n" +
 				"		}\n" +
-				"		this.parent = parent;\n" +	
+				"		this.parent = parent;\n" +
 				"	}\n\n");
 	}
-	
-	
+
+
 	private void createReplaceByMethod(StringBuilder sb) {
 		sb.append("	public void replaceBy("+getCommonSupertypeType()+" other) {\n");
 		sb.append("		if (parent == null)\n");
@@ -527,7 +527,7 @@ public class Generator {
 		sb.append("		}\n");
 		sb.append("	}\n\n");
 	}
-	
+
 
 	private String getNullableAnnotation() {
 //		return "@org.eclipse.jdt.annotation.Nullable"; // TODO add flag
@@ -541,11 +541,11 @@ public class Generator {
 			sb.append("	private " + printType(p.getTyp()) + " " + p.name + ";\n");
 			// setter:
 			sb.append("	public void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ") {\n");
-			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) { 
+			if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
 				// add null checks for non primitive types:
 				sb.append("		if (" + p.name	+ " == null) throw new IllegalArgumentException();\n");
 				if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
-					// we have a generated type. 
+					// we have a generated type.
 					// the removed type looses its parent:
 					sb.append("		this." + p.name + ".setParent(null);\n");
 					// the new element has a new parent:
@@ -573,7 +573,7 @@ public class Generator {
 		sb.append("	}\n");
 		return childCount;
 	}
-	
+
 	private void createSetMethod(ConstructorDef c, StringBuilder sb) {
 		sb.append("	public "+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElem) {\n");
 		sb.append("		"+getCommonSupertypeType()+" oldElem;\n");
@@ -609,25 +609,25 @@ public class Generator {
 				sb.append("(" + printType(p.getTyp()) + ") " + p.name+".copy()");
 			} else {
 				sb.append(p.name);
-			}			
+			}
 			first = false;
 		}
 		sb.append(");\n");
 		sb.append("	}\n");
 	}
-	
+
 	private void createClearMethod(ConstructorDef c, StringBuilder sb) {
 		// recursive clearAttribute
 		sb.append("	@Override public void clearAttributes() {\n");
 		for (Parameter p : c.parameters) {
 			if (!p.isRef && prog.hasElement(p.getTyp())) {
 				sb.append("		" + p.name+".clearAttributes();\n");
-			}			
+			}
 		}
 		sb.append("		clearAttributesLocal();\n");
 		sb.append("	}\n");
-		
-		
+
+
 		// local clear attributes:
 		sb.append("	@Override public void clearAttributesLocal() {\n");
 		for (AttributeDef attr : prog.attrDefs) {
@@ -637,10 +637,10 @@ public class Generator {
 				}
 			}
 		}
-		
+
 		sb.append("	}\n");
 	}
-	
+
 	private void createClearMethod(ListDef c, StringBuilder sb) {
 		// Recursive clear
 		sb.append("	@Override public void clearAttributes() {\n");
@@ -683,11 +683,6 @@ public class Generator {
 
 	private void createAcceptMethods(ConstructorDef c, StringBuilder sb) {
 		sb.append("	@Override public void accept(Visitor v) {\n");
-		for (Parameter p : c.parameters) {
-			if (prog.hasElement(p.getTyp()) && !p.isRef) {
-				sb.append("		" + p.name + ".accept(v);\n");
-			}
-		}
 		sb.append("		v.visit(this);\n");
 		sb.append("	}\n");
 	}
@@ -706,7 +701,7 @@ public class Generator {
 				return;
 			}
 		}
-		
+
 		boolean first;
 		sb.append("	@Override public String toString() {\n");
 		sb.append("		return \"" + c.getName());
@@ -754,11 +749,11 @@ public class Generator {
 		// getParent method:
 		sb.append("	" + getNullableAnnotation()  + getCommonSupertypeType() + " getParent();\n");
 
-		
-		
+
+
 		// copy method
 		sb.append("	" + c.getName(typePrefix) + " copy();\n");
-		
+
 		// clear attributes method
 		sb.append("	void clearAttributes();\n");
 		sb.append("	void clearAttributesLocal();\n");
@@ -766,7 +761,7 @@ public class Generator {
 
 		createAttributeStubs(c, sb);
 		createFieldStubs(c, sb);
-		
+
 		sb.append("}\n");
 		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
 	}
@@ -789,13 +784,29 @@ public class Generator {
 			}
 		}
 		sb.append("	}\n");
-		
+
 		// Default Visitor
 		sb.append("	public static abstract class DefaultVisitor implements Visitor {\n");
 		for (AstEntityDefinition contained : defs) {
 			if (contained instanceof AstBaseTypeDefinition) {
 				AstBaseTypeDefinition c = (AstBaseTypeDefinition) contained;
-				sb.append("		@Override public void visit(" +c.getName(typePrefix)+" " + toFirstLower(c.getName()) +") {}\n");
+				sb.append("		@Override public void visit(" +c.getName(typePrefix)+" " + toFirstLower(c.getName()) +") {\n");
+
+				if (contained instanceof ConstructorDef) {
+					ConstructorDef cconst = (ConstructorDef) contained;
+					for (Parameter p : cconst.parameters) {
+						if (prog.hasElement(p.getTyp()) && !p.isRef) {
+							sb.append("		  " + toFirstLower(c.getName()) + ".get" + toFirstUpper(p.name) + "().accept(this);\n");
+						}
+					}
+				} else {
+					ListDef l = ((ListDef) contained);
+					sb.append("		  for (" +printType(l.itemType)+ " i : " + toFirstLower(c.getName()) + " ) {\n");
+					sb.append("		  	i.accept(this);\n");
+					sb.append("		  }\n");
+				}
+
+				sb.append("     }\n");
 			}
 		}
 		sb.append("	}\n");
@@ -811,10 +822,10 @@ public class Generator {
 	private void generateFactoryClass() {
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
-		
+
 		addSuppressWarningAnnotations(sb);
 		sb.append("public class " + toFirstUpper(prog.getFactoryName()) + " {\n");
-	
+
 		for (ConstructorDef c : prog.constructorDefs) {
 			sb.append("	public static " + c.getName(typePrefix) + " " + c.getName() + "(");
 			boolean first = true;
@@ -837,26 +848,26 @@ public class Generator {
 			}
 			sb.append(");\n");
 			sb.append("	}\n");
-			
+
 		}
-		
-		
+
+
 		for (ListDef l : prog.listDefs) {
 			sb.append("	public static " + l.getName(typePrefix) + " " + l.getName() + "(" + printType(l.itemType) + " ... elements ) {\n");
 			sb.append("		" + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
 			sb.append("		for (" + printType(l.itemType) + " e : elements) { l.add(e); }\n");
 			sb.append("		return l;\n");
 			sb.append("	}\n");
-			
-			
+
+
 			sb.append("	public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
 			sb.append("		" + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
 			sb.append("		for (" + printType(l.itemType) + " e : elements) { l.add(e); }\n");
 			sb.append("		return l;\n");
 			sb.append("	}\n");
 		}
-		
-		
+
+
 		sb.append("}");
 		fileGenerator.createFile(toFirstUpper(prog.getFactoryName()) + ".java", sb);
 	}
@@ -891,19 +902,19 @@ public class Generator {
 
 		// getParent method:
 		sb.append("	" + getNullableAnnotation()  + getCommonSupertypeType() + " getParent();\n");
-		
-		
-		
+
+
+
 		generateMatcher(c, sb);
-		
+
 		// copy method
 		sb.append("	" + printType(c.getName()) + " copy();\n");
 
 
 		createAttributeStubs(c, sb);
 		createFieldStubs(c, sb);
-		
-		
+
+
 		sb.append("}\n");
 		fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
 	}
@@ -911,10 +922,10 @@ public class Generator {
 
 
 	private void generateMatcher(CaseDef c, StringBuilder sb) {
-		// create match methods:		
+		// create match methods:
 		sb.append("	<T> T match(Matcher<T> s);\n");
 		sb.append("	void match(MatcherVoid s);\n");
-		
+
 		// create Matcher interface:
 		sb.append("	public interface Matcher<T> {\n");
 		for (AstBaseTypeDefinition baseType : baseTypes.get(c)) {
@@ -930,7 +941,7 @@ public class Generator {
 		sb.append("	}\n\n");
 	}
 
-	
+
 	private void createAttributeStubs(AstEntityDefinition c, StringBuilder sb) {
 		for (AttributeDef attr : prog.attrDefs) {
 			if (hasAttribute(c, attr)) {
@@ -980,50 +991,47 @@ public class Generator {
 		StringBuilder sb;
 		sb = new StringBuilder();
 		printProlog(sb);
-		
+
 		addSuppressWarningAnnotations(sb);
 		sb.append("class " + l.getName(typePrefix) + "Impl extends "+l.getName(typePrefix)+" {\n ");
-		
+
 		createGetSetParentMethods(sb);
-		
+
 		createReplaceByMethod(sb);
-		
+
 		sb.append("	protected void other_setParentToThis("+printType(l.itemType)+" t) {\n");
 		if (isGeneratedTyp(l.itemType) && !l.ref) {
 			sb.append("		t.setParent(this);\n");
 		}
 		sb.append("	}\n\n");
-		
+
 		sb.append("	protected void other_clearParent("+printType(l.itemType)+" t) {\n");
 		if (isGeneratedTyp(l.itemType) && !l.ref) {
 			sb.append("		t.setParent(null);\n");
 		}
 		sb.append("	}\n\n");
-		
+
 		// set method:
 		sb.append("	@Override\n");
 		sb.append("	public "+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElement) {\n");
 		sb.append("		return ((AsgList<"+printType(l.itemType)+">) this).set(i, ("+printType(l.itemType)+") newElement);\n");
 		sb.append("	}\n\n");
-		
+
 		// match methods for switch
 		createMatchMethods(l, sb);
-		
-		
+
+
 		// accept methods for visitors
 		sb.append("	@Override public void accept(Visitor v) {\n");
-		sb.append("		for (" +printType(l.itemType)+ " i : this ) {\n");
-		sb.append("			i.accept(v);\n");
-		sb.append("		}\n");
 		sb.append("		v.visit(this);\n");
 		sb.append("	}\n");
 		createClearMethod(l, sb);
 		createAttributeImpl(l, sb);
 		createFieldsImpl(l, sb);
-		
+
 		// toString method
 		createToString(l, sb);
-		
+
 		sb.append("}\n");
 		fileGenerator.createFile(l.getName(typePrefix) + "Impl.java", sb);
 	}
@@ -1035,7 +1043,7 @@ public class Generator {
 				return;
 			}
 		}
-		
+
 		sb.append("	@Override public String toString() {\n");
 		sb.append("		String result =  \""+l.getName()+"(\";\n");
 		sb.append("		boolean first = true;\n");
@@ -1065,7 +1073,7 @@ public class Generator {
 		}
 		sb.append("{\n");
 
-		
+
 		// copy method
 		sb.append("	public " + l.getName(typePrefix) + " copy() {\n");
 		sb.append("		" + l.getName(typePrefix) + " result = new "+l.getName(typePrefix)+"Impl();\n");
@@ -1083,7 +1091,7 @@ public class Generator {
 
 		createAttributeStubs(l, sb);
 		createFieldStubs(l, sb);
-		
+
 		sb.append("}\n");
 		fileGenerator.createFile(l.getName(typePrefix) + ".java", sb);
 	}
@@ -1103,7 +1111,7 @@ public class Generator {
 	private void generateStandardClasses() {
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
-		
+
 		sb.append("public interface "+getCommonSupertypeType()+" {\n" +
 				"	" + getNullableAnnotation() +getCommonSupertypeType()+" getParent();\n" +
 				"	"+getCommonSupertypeType()+" copy();\n" +
@@ -1113,7 +1121,7 @@ public class Generator {
 				"	"+getCommonSupertypeType()+" get(int i);\n"+
 				"	"+getCommonSupertypeType()+" set(int i, "+getCommonSupertypeType()+" newElement);\n"+
 				"	void setParent(" + getNullableAnnotation() +getCommonSupertypeType()+" parent);\n");
-		
+
 		// replace method
 		sb.append("	void replaceBy("+getCommonSupertypeType()+" other);\n");
 
@@ -1125,9 +1133,9 @@ public class Generator {
 		createAttributeStubs(commonSuperType, sb);
 		createFieldStubs(commonSuperType, sb);
 		sb.append("}\n\n");
-		
-		
-		
+
+
+
 		fileGenerator.createFile(getCommonSupertypeType() + ".java", sb);
 	}
 
@@ -1137,7 +1145,7 @@ public class Generator {
 		TemplateAsgList.writeTo(sb, getCommonSupertypeType());
 		fileGenerator.createFile("AsgList.java", sb);
 	}
-	
+
 	private void generateCyclicDependencyError() {
 		StringBuilder sb = new StringBuilder();
 		printProlog(sb);
@@ -1153,8 +1161,8 @@ public class Generator {
 		sb.append(FileGenerator.PARSEQ_COMMENT + "\n");
 		sb.append("package " + packageName + ";\n\n");
 	}
-	
-	
+
+
 
 	private String toFirstLower(String name) {
 		return Character.toLowerCase(name.charAt(0)) + name.substring(1);
@@ -1165,25 +1173,25 @@ public class Generator {
 	}
 
 	/**
-	 * calculates the transient closure of a multimap 
+	 * calculates the transient closure of a multimap
 	 */
 	private <T> Multimap<T, T> transientClosure(Multimap<T, T> start) {
 		Multimap<T, T> result = HashMultimap.create();
 		result.putAll(start);
-		
+
 		boolean changed;
 		do {
 			Multimap<T, T> changes = HashMultimap.create();
-			
+
 			for (Entry<T, T> e1 : result.entries()) {
 				for (T t : result.get(e1.getValue())) {
 					changes.put(e1.getKey(), t);
 				}
 			}
 			changed = result.putAll(changes);
-			
+
 		} while (changed);
-		
+
 		return result;
 	}
 
