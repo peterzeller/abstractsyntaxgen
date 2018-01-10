@@ -4,7 +4,7 @@ apply plugin: 'signing'
 apply plugin: 'antlr'
 
 group = 'com.github.peterzeller'
-version = '0.2.0'
+version = '0.2.1'
 
 description = """Abstract Syntax Generator"""
 
