@@ -233,7 +233,6 @@ public class Generator {
 		sb.append("@org.eclipse.jdt.annotation.NonNullByDefault\n");
 		sb.append("package " + packageName + ";\n\n");
 
-
 		fileGenerator.createFile("package-info.java", sb);
 	}
 
@@ -1159,7 +1158,8 @@ public class Generator {
 
 	private void printProlog(StringBuilder sb) {
 		sb.append(FileGenerator.PARSEQ_COMMENT + "\n");
-		sb.append("package " + packageName + ";\n\n");
+		sb.append("package " + packageName + ";\n");
+		sb.append("import java.util.Arrays;\n\n");
 	}
 
 
