@@ -363,7 +363,7 @@ public class Generator {
 					if (attr.circular == null) {
 						sb.append("	private int zzattr_" + attr.attr + "_state = 0;\n");
 						sb.append("	private " + attr.returns + " zzattr_" + attr.attr + "_cache;\n");
-						sb.append("/** " + attr.comment + "*/\n");
+						sb.append("	/** " + attr.comment + "*/\n");
 						sb.append("	public " + attr.returns + " " + attr.attr + "() {\n");
 						sb.append("		if (zzattr_" + attr.attr + "_state == 0) {\n");
 						sb.append("			zzattr_" + attr.attr +"_state = 1;\n");
@@ -378,7 +378,7 @@ public class Generator {
 						// circular attribute
 						sb.append("	private int zzattr_" + attr.attr + "_state = 0;\n");
 						sb.append("	private " + attr.returns + " zzattr_" + attr.attr + "_cache;\n");
-						sb.append("/** " + attr.comment + "*/\n");
+						sb.append("	/** " + attr.comment + "*/\n");
 						sb.append("	public " + attr.returns + " " + attr.attr + "() {\n");
 						sb.append("		if (zzattr_" + attr.attr + "_state == 0) {\n");
 						sb.append("			zzattr_" + attr.attr +"_state = 1;\n");
@@ -402,7 +402,7 @@ public class Generator {
 						sb.append("	}\n");
 					}
 				} else {
-					sb.append("/** " + attr.comment + "*/\n");
+					sb.append("	/** " + attr.comment + "*/\n");
 					sb.append("	public " + attr.returns + " " + attr.attr + "("+printParams(attr.parameters)+") {\n");
 					if (attr.returns.equals("void")) {
 						sb.append("		"+attr.implementedBy+"(("+c.getName(typePrefix)+")this"+printArgs(attr.parameters)+");\n");
@@ -855,14 +855,14 @@ public class Generator {
 		for (ListDef l : prog.listDefs) {
 			sb.append("	public static " + l.getName(typePrefix) + " " + l.getName() + "(" + printType(l.itemType) + " ... elements ) {\n");
 			sb.append("		" + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-			sb.append("		for (" + printType(l.itemType) + " e : elements) { l.add(e); }\n");
+			sb.append("		l.addAll(Arrays.asList(elements));\n");
 			sb.append("		return l;\n");
 			sb.append("	}\n");
 
 
 			sb.append("	public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
 			sb.append("		" + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-			sb.append("		for (" + printType(l.itemType) + " e : elements) { l.add(e); }\n");
+			sb.append("		l.addAll(Arrays.asList(elements));\n");
 			sb.append("		return l;\n");
 			sb.append("	}\n");
 		}
@@ -945,7 +945,7 @@ public class Generator {
 	private void createAttributeStubs(AstEntityDefinition c, StringBuilder sb) {
 		for (AttributeDef attr : prog.attrDefs) {
 			if (hasAttribute(c, attr)) {
-				sb.append("/** " + attr.comment + "*/\n");
+				sb.append("	/** " + attr.comment + "*/\n");
 				sb.append("	public abstract " + attr.returns + " " + attr.attr + "("+printParams(attr.parameters)+");\n");
 			}
 		}
