@@ -1099,7 +1099,7 @@ public class Generator {
 
 
 	private void addSuppressWarningAnnotations(StringBuilder sb) {
-		sb.append("@SuppressWarnings({\"cast\", \"unused\", \"unchecked\"})\n");
+		sb.append("@SuppressWarnings({\"cast\", \"unused\", \"rawtypes\"})\n");
 	}
 
 	private void generateLists() {
