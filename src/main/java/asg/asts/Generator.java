@@ -861,7 +861,8 @@ public class Generator {
 
 			sb.append("	public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
 			sb.append("		" + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-			sb.append("		l.addAll(Arrays.asList(elements));\n");
+			sb.append("		if (elements instanceof Collection) l.addAll((Collection) elements);\n");
+			sb.append("		else for (" + printType(l.itemType) + " elem : elements) l.add(elem);\n");
 			sb.append("		return l;\n");
 			sb.append("	}\n");
 		}
@@ -1098,7 +1099,7 @@ public class Generator {
 
 
 	private void addSuppressWarningAnnotations(StringBuilder sb) {
-		sb.append("@SuppressWarnings({\"cast\", \"unused\"})\n");
+		sb.append("@SuppressWarnings({\"cast\", \"unused\", \"unchecked\"})\n");
 	}
 
 	private void generateLists() {
@@ -1159,7 +1160,7 @@ public class Generator {
 	private void printProlog(StringBuilder sb) {
 		sb.append(FileGenerator.PARSEQ_COMMENT + "\n");
 		sb.append("package " + packageName + ";\n");
-		sb.append("import java.util.Arrays;\n\n");
+		sb.append("import java.util.*;\n\n");
 	}
 
 
