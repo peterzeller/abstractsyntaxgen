@@ -40,8 +40,8 @@ public class ConstructorDef extends AstBaseTypeDefinition {
 		return result;
 	}
 
-	public void addParam(boolean ref, String type, String name) {
-		parameters.add(new Parameter(ref, type, name));
+	public void addParam(boolean ref, boolean ignoreEquality, String type, String name) {
+		parameters.add(new Parameter(ref, ignoreEquality, type, name));
 	}
 	
 	

@@ -2,18 +2,21 @@ package asg.asts.ast;
 
 public final class Parameter {
 
+	private final boolean ignoreEquality;
 	private final String typ;
 	public final  String name;
 	public final boolean isRef;
 	
 
-	public Parameter(boolean isRef, String typ, String name) {
+	public Parameter(boolean isRef, boolean ignoreEquality, String typ, String name) {
 		this.isRef = isRef;
+		this.ignoreEquality = ignoreEquality;
 		this.typ = typ;
 		this.name = name;
 	}
 	
 	public Parameter(String typ, String name) {
+		this.ignoreEquality = false;
 		this.isRef = false;
 		this.typ = typ;
 		this.name = name;
@@ -41,6 +44,10 @@ public final class Parameter {
 
 	public String getTyp() {
 		return typ;
+	}
+
+	public boolean isIgnoreEquality() {
+		return ignoreEquality;
 	}
 
 }

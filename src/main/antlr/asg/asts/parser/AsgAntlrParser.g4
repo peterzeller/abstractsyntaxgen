@@ -45,11 +45,13 @@ contructorDef[Program prog] returns [ConstructorDef c]:
 paramDef[ConstructorDef c]:
 	{
 		boolean ref = false;
+		boolean ignoreEquality = false;
 	}
+	('@ignoreForEquality' {ignoreEquality = true;})?
 	('ref' {ref = true;})?
 	 t=javaType n=ID 
 	{ 
-		$c.addParam(ref, $t.name, $n.text);
+		$c.addParam(ref, ignoreEquality, $t.name, $n.text);
 	}
 	;
 	

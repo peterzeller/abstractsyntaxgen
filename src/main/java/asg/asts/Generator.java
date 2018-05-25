@@ -316,15 +316,24 @@ public class Generator {
 			sb.append("		if (e instanceof " + c.getName(typePrefix) + ") {\n");
 			sb.append("			" + c.getName(typePrefix) + " o = (" + c.getName(typePrefix) + ") e;\n");
 			sb.append("			return ");
+			boolean first = true;
 			for (Parameter p : c.parameters) {
-				if (p != c.parameters.get(0)) {
+				if (p.isIgnoreEquality()) {
+					continue;
+				}
+				if (!first) {
 					sb.append("\n			    && ");
 				}
-				if (prog.hasElement(p.getTyp()) && !p.isRef) {
-					sb.append("this." + p.name + ".structuralEquals(o.get"+toFirstUpper(p.name)+"())");
+				if (prog.hasElement(p.getTyp())) {
+					if (p.isRef) {
+						sb.append("this." + p.name + " == o.get"+toFirstUpper(p.name)+"()");
+					} else {
+						sb.append("this." + p.name + ".structuralEquals(o.get"+toFirstUpper(p.name)+"())");
+					}
 				} else {
 					sb.append("java.util.Objects.equals(" + p.name + ", o.get"+toFirstUpper(p.name)+"())");
 				}
+				first = false;
 			}
 			sb.append(";\n");
 			sb.append("		} else {\n");
