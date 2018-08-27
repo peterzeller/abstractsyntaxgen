@@ -370,8 +370,12 @@ public class Generator {
                         sb.append("    /** " + attr.comment + "*/\n");
                         sb.append("    public " + attr.returns + " " + attr.attr + "() {\n");
                         sb.append("        if (zzattr_" + attr.attr + "_state == 0) {\n");
-                        sb.append("            zzattr_" + attr.attr + "_state = 1;\n");
-                        sb.append("            zzattr_" + attr.attr + "_cache = " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this);\n");
+                        sb.append("            try {\n");
+                        sb.append("                zzattr_" + attr.attr + "_state = 1;\n");
+                        sb.append("                zzattr_" + attr.attr + "_cache = " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this);\n");
+                        sb.append("            } finally {\n");
+                        sb.append("                zzattr_" + attr.attr + "_state = 0;\n");
+                        sb.append("            }\n");
                         sb.append("            zzattr_" + attr.attr + "_state = 2;\n");
                         sb.append("        } else if (zzattr_" + attr.attr + "_state == 1) {\n");
                         sb.append("            throw new CyclicDependencyError(this, \"" + attr.attr + "\");\n");
