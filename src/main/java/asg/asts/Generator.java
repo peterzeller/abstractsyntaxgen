@@ -1,17 +1,16 @@
 package asg.asts;
 
 import asg.asts.ast.*;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 
+@SuppressWarnings("StringConcatenationInsideStringBufferAppend")
 public class Generator {
 
 
@@ -280,6 +279,9 @@ public class Generator {
 
         //copy method
         createCopyMethod(c, sb);
+
+        // copyWithRefs method
+        createCopyWithRefsMethod(c, sb);
 
         // clear attributes method
         createClearMethod(c, sb);
@@ -619,8 +621,61 @@ public class Generator {
             first = false;
         }
         sb.append(");\n");
-        sb.append("    }\n");
+        sb.append("    }\n\n");
     }
+
+    private void createCopyWithRefsMethod(ConstructorDef c, StringBuilder sb) {
+        sb.append("    @Override public " + c.getName(typePrefix) + " copyWithRefs() {\n");
+        // first do a normal copy
+        sb.append("        " + c.getName(typePrefix) + " res = copy();\n");
+        // then fix up all references using a visitor:
+        Collection<AstEntityDefinition> childTypes = transientChildTypes.get(c);
+        childTypes.remove(null);
+        List<ConstructorDef> childTypesWithRefs = new ArrayList<ConstructorDef>();
+        for (AstEntityDefinition childType : childTypes) {
+            if (childType instanceof ConstructorDef) {
+                ConstructorDef constructorChild = (ConstructorDef) childType;
+                if (constructorChild.parameters.stream().anyMatch(p -> p.isRef
+                        && containsType(childTypes, p.getTyp()))) {
+                    childTypesWithRefs.add(constructorChild);
+                }
+            }
+        }
+        if (!childTypesWithRefs.isEmpty()) {
+            sb.append("        " + getCommonSupertypeType() + " self = this;\n");
+            sb.append("        accept(new " + getCommonSupertypeType() + ".DefaultVisitor() {\n");
+            for (ConstructorDef cc : childTypesWithRefs) {
+                sb.append("            @Override public void visit(" + cc.getName(typePrefix) + " e) {\n");
+                sb.append("                super.visit(e);\n");
+                for (Parameter param : cc.parameters) {
+                    if (param.isRef && containsType(childTypes, param.getTyp())) {
+                        sb.append("                // check reference " + param.name + "\n");
+                        sb.append("                " + getCommonSupertypeType() + " elem = e.get" + toFirstUpper(param.name) + "();\n");
+                        sb.append("                while (elem != self && elem != null) {\n");
+                        sb.append("                    elem = elem.getParent();\n");
+                        sb.append("                }\n");
+                        sb.append("                if (elem == self) {\n");
+                        sb.append("                    e.set" + toFirstUpper(param.name) + "((" + param.getTyp() + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
+                        sb.append("                }\n");
+                    }
+                }
+                sb.append("            }\n");
+            }
+            sb.append("        });\n");
+        }
+        sb.append("        return res;\n");
+        sb.append("    }\n\n");
+    }
+
+    private boolean containsType(Collection<AstEntityDefinition> childTypes, String typeName) {
+        Preconditions.checkNotNull(typeName);
+        return childTypes.stream()
+                .anyMatch(ct -> {
+                    Preconditions.checkNotNull(ct);
+                    return ct.getName("").equals(typeName);
+                });
+    }
+
 
     private void createClearMethod(ConstructorDef c, StringBuilder sb) {
         // recursive clearAttribute
@@ -757,6 +812,7 @@ public class Generator {
 
         // copy method
         sb.append("    " + c.getName(typePrefix) + " copy();\n");
+        sb.append("    " + c.getName(typePrefix) + " copyWithRefs();\n");
 
         // clear attributes method
         sb.append("    void clearAttributes();\n");
@@ -913,6 +969,7 @@ public class Generator {
 
         // copy method
         sb.append("    " + printType(c.getName()) + " copy();\n");
+        sb.append("    " + printType(c.getName()) + " copyWithRefs();\n");
 
 
         createAttributeStubs(c, sb);
@@ -1117,6 +1174,7 @@ public class Generator {
         sb.append("public interface " + getCommonSupertypeType() + " {\n" +
                 "    " + getNullableAnnotation() + getCommonSupertypeType() + " getParent();\n" +
                 "    " + getCommonSupertypeType() + " copy();\n" +
+                "    " + getCommonSupertypeType() + " copyWithRefs();\n" +
                 "    int size();\n" +
                 "    void clearAttributes();\n" +
                 "    void clearAttributesLocal();\n" +
@@ -1129,6 +1187,35 @@ public class Generator {
 
         // structural equals method
         sb.append("    boolean structuralEquals(" + getCommonSupertypeType() + " elem);\n");
+
+        // pathTo and followPath methods:
+        sb.append("    default List<Integer> pathTo(" + getCommonSupertypeType() + "  elem) {\n");
+        sb.append("        List<Integer> path = new ArrayList<>();\n");
+        sb.append("        while (elem != this) {\n");
+        sb.append("            if (elem == null) {\n");
+        sb.append("                throw new RuntimeException(\"Element \" + elem + \" is not a parent of \" + this);\n");
+        sb.append("            }\n");
+        sb.append("            " + getCommonSupertypeType() + " parent = elem.getParent();\n");
+        sb.append("            for (int i = 0; i < parent.size(); i++) {\n");
+        sb.append("                if (parent.get(i) == elem) {\n");
+        sb.append("                    path.add(i);\n");
+        sb.append("                    break;\n");
+        sb.append("                }\n");
+        sb.append("            }\n");
+        sb.append("            elem = parent;\n");
+        sb.append("        }\n");
+        sb.append("        Collections.reverse(path);\n");
+        sb.append("        return path;\n");
+        sb.append("    }\n");
+        sb.append("\n");
+        sb.append("    default " + getCommonSupertypeType() + " followPath(Iterable<Integer> path) {\n");
+        sb.append("        " + getCommonSupertypeType() + " elem = this;\n");
+        sb.append("        for (Integer i : path) {\n");
+        sb.append("            elem = elem.get(i);\n");
+        sb.append("        }\n");
+        sb.append("        return this;\n");
+        sb.append("    }\n");
+
 
         generateMatcher(commonSuperType, sb);
         generateVisitorInterface(commonSuperType, sb);
