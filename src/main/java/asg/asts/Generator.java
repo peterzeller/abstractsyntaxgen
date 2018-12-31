@@ -643,19 +643,21 @@ public class Generator {
         }
         if (!childTypesWithRefs.isEmpty()) {
             sb.append("        " + getCommonSupertypeType() + " self = this;\n");
-            sb.append("        accept(new " + getCommonSupertypeType() + ".DefaultVisitor() {\n");
+            sb.append("        res.accept(new " + getCommonSupertypeType() + ".DefaultVisitor() {\n");
             for (ConstructorDef cc : childTypesWithRefs) {
                 sb.append("            @Override public void visit(" + cc.getName(typePrefix) + " e) {\n");
                 sb.append("                super.visit(e);\n");
                 for (Parameter param : cc.parameters) {
                     if (param.isRef && containsType(childTypes, param.getTyp())) {
                         sb.append("                // check reference " + param.name + "\n");
-                        sb.append("                " + getCommonSupertypeType() + " elem = e.get" + toFirstUpper(param.name) + "();\n");
-                        sb.append("                while (elem != self && elem != null) {\n");
-                        sb.append("                    elem = elem.getParent();\n");
-                        sb.append("                }\n");
-                        sb.append("                if (elem == self) {\n");
-                        sb.append("                    e.set" + toFirstUpper(param.name) + "((" + param.getTyp() + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
+                        sb.append("                {\n");
+                        sb.append("                    " + getCommonSupertypeType() + " elem = e.get" + toFirstUpper(param.name) + "();\n");
+                        sb.append("                    while (elem != self && elem != null) {\n");
+                        sb.append("                        elem = elem.getParent();\n");
+                        sb.append("                    }\n");
+                        sb.append("                    if (elem == self) {\n");
+                        sb.append("                        e.set" + toFirstUpper(param.name) + "((" + param.getTyp() + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
+                        sb.append("                    }\n");
                         sb.append("                }\n");
                     }
                 }
@@ -1215,7 +1217,7 @@ public class Generator {
         sb.append("        for (Integer i : path) {\n");
         sb.append("            elem = elem.get(i);\n");
         sb.append("        }\n");
-        sb.append("        return this;\n");
+        sb.append("        return elem;\n");
         sb.append("    }\n");
 
 
