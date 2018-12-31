@@ -624,7 +624,7 @@ public class Generator {
         sb.append("    }\n\n");
     }
 
-    private void createCopyWithRefsMethod(ConstructorDef c, StringBuilder sb) {
+    private void createCopyWithRefsMethod(AstBaseTypeDefinition c, StringBuilder sb) {
         sb.append("    @Override public " + c.getName(typePrefix) + " copyWithRefs() {\n");
         // first do a normal copy
         sb.append("        " + c.getName(typePrefix) + " res = copy();\n");
@@ -1142,6 +1142,8 @@ public class Generator {
         sb.append("        }\n");
         sb.append("        return result;\n");
         sb.append("    }\n\n");
+
+        createCopyWithRefsMethod(l, sb);
 
         // deprecate generic set
         sb.append("    /** @deprecated  this is the generic set method, so probably the element type is wrong */\n");
