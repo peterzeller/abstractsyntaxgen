@@ -607,7 +607,7 @@ public class Generator {
     private void createCopyMethod(ConstructorDef c, StringBuilder sb) {
         boolean first;
         sb.append("    @Override public " + c.getName(typePrefix) + " copy() {\n");
-        sb.append("        return new " + c.getName(typePrefix) + "Impl(");
+        sb.append("        " + c.getName(typePrefix) + " result = new " + c.getName(typePrefix) + "Impl(");
         first = true;
         for (Parameter p : c.parameters) {
             if (!first) {
@@ -621,6 +621,14 @@ public class Generator {
             first = false;
         }
         sb.append(");\n");
+        for (FieldDef field : prog.fieldDefs) {
+            if (!hasField(c, field)) {
+                continue;
+            }
+            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + ");\n");
+
+        }
+        sb.append("        return result;\n");
         sb.append("    }\n\n");
     }
 
