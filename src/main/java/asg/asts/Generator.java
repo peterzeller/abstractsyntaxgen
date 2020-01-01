@@ -1124,7 +1124,7 @@ public class Generator {
         sb.append("            first = false;\n");
         sb.append("        }\n");
         sb.append("        result.append(\")\");\n");
-        sb.append("        return result;\n");
+        sb.append("        return result.toString();\n");
         sb.append("    }\n");
     }
 
