@@ -1115,15 +1115,15 @@ public class Generator {
         }
 
         sb.append("    @Override public String toString() {\n");
-        sb.append("        String result =  \"" + l.getName() + "(\";\n");
+        sb.append("        StringBuilder result = new StringBuilder(\"" + l.getName() + "(\");\n");
         sb.append("        boolean first = true;\n");
         sb.append("        for (" + printType(l.itemType) + " i : this ) {\n");
-        sb.append("            if (!first) { result +=\", \"; }\n");
-        sb.append("            if (result.length() > 1000) { result +=\"...\"; break; }\n");
-        sb.append("            result += i;\n");
+        sb.append("            if (!first) { result.append(\", \"); }\n");
+        sb.append("            if (result.length() > 1000) { result.append(\"...\"); break; }\n");
+        sb.append("            result.append(i);\n");
         sb.append("            first = false;\n");
         sb.append("        }\n");
-        sb.append("        result +=  \")\";\n");
+        sb.append("        result.append(\")\");\n");
         sb.append("        return result;\n");
         sb.append("    }\n");
     }
