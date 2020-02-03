@@ -273,6 +273,8 @@ public class Generator {
         int childCount = createGetMethod(c, sb);
         // set method
         createSetMethod(c, sb);
+        // forEachElement method
+        createForEachMethod(c, sb);
 
         //size method
         createSizeMethod(sb, childCount);
@@ -595,6 +597,18 @@ public class Generator {
         }
         sb.append("            default: throw new IllegalArgumentException(\"Index out of range: \" + i);\n");
         sb.append("        }\n");
+        sb.append("    }\n");
+    }
+
+    private void createForEachMethod(ConstructorDef c, StringBuilder sb) {
+        sb.append("\n");
+        sb.append("    @Override\n");
+        sb.append("    public void forEachElement(java.util.function.Consumer<? super " + commonSuperType.getName() + "> action) {\n");
+        for (Parameter p : c.parameters) {
+            if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                sb.append("        action.accept(this." + p.name + ");\n");
+            }
+        }
         sb.append("    }\n");
     }
 
@@ -1192,6 +1206,10 @@ public class Generator {
                 "    void clearAttributesLocal();\n" +
                 "    " + getCommonSupertypeType() + " get(int i);\n" +
                 "    " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement);\n" +
+                "    void forEachElement(java.util.function.Consumer<? super Element> action);\n" +
+                "    default void trimToSize() {" +
+                "        forEachElement(" + getCommonSupertypeType() + "::trimToSize);" +
+                "    }"+
                 "    void setParent(" + getNullableAnnotation() + getCommonSupertypeType() + " parent);\n");
 
         // replace method
