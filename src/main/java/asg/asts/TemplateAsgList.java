@@ -9,7 +9,7 @@ public class TemplateAsgList {
 		sb.append("import java.util.List;\n");
 		sb.append("import java.util.ListIterator;\n");
 		sb.append("\n");
-		sb.append("abstract class AsgList<T extends " + commonSupertypeName + "> implements List<T> {\n");
+		sb.append("abstract class AsgList<T> implements List<T> {\n");
 		sb.append("	\n");
 		sb.append("	private ArrayList<T> list = new ArrayList<T>();\n");
 		sb.append("	\n");
@@ -265,7 +265,7 @@ public class TemplateAsgList {
 		sb.append("		return false;\n");
 		sb.append("	}\n\n");
 		sb.append("	public void forEachElement(java.util.function.Consumer<? super Element> action) {\n");
-		sb.append("		list.forEach((Consumer) action);\n");
+		sb.append("		list.forEach((java.util.function.Consumer) action);\n");
 		sb.append("	}\n");
 		sb.append("	public void trimToSize() {\n");
 		sb.append("		list.trimToSize();\n");
