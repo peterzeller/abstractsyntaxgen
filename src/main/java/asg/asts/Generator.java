@@ -1169,12 +1169,6 @@ public class Generator {
 
         createCopyWithRefsMethod(l, sb);
 
-        // deprecate generic set
-        sb.append("    /** @deprecated  this is the generic set method, so probably the element type is wrong */\n");
-        sb.append("    @Override @Deprecated\n");
-        sb.append("    public abstract " + getCommonSupertypeType() +
-                " set(int i, " + getCommonSupertypeType() + " e);\n\n");
-
         createAttributeStubs(l, sb);
         createFieldStubs(l, sb);
 
