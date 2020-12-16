@@ -264,7 +264,7 @@ public class TemplateAsgList {
 		sb.append("		}\n");
 		sb.append("		return false;\n");
 		sb.append("	}\n\n");
-		sb.append("	@SuppressWarnings(\"unchecked\", \"rawtypes\")");
+		sb.append("	@SuppressWarnings({\"unchecked\", \"rawtypes\"})");
 		sb.append("	public void forEachElement(java.util.function.Consumer<? super " + commonSupertypeName + "> action) {\n");
 		sb.append("		list.forEach((java.util.function.Consumer) action);\n");
 		sb.append("	}\n");

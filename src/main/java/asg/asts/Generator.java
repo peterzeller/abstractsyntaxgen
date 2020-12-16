@@ -603,7 +603,7 @@ public class Generator {
     private void createForEachMethod(ConstructorDef c, StringBuilder sb) {
         sb.append("\n");
         sb.append("    @Override\n");
-        sb.append("    public void forEachElement(java.util.function.Consumer<? super " + commonSuperType.getName() + "> action) {\n");
+        sb.append("    public void forEachElement(java.util.function.Consumer<? super " + getCommonSupertypeType() + "> action) {\n");
         for (Parameter p : c.parameters) {
             if (prog.hasElement(p.getTyp()) && !p.isRef) {
                 sb.append("        action.accept(this." + p.name + ");\n");
