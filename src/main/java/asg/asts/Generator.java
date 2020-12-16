@@ -946,7 +946,7 @@ public class Generator {
 
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-            sb.append("        if (elements instanceof Collection) l.addAll((Collection) elements);\n");
+            sb.append("        if (elements instanceof Collection) l.addAll((Collection<? extends "+printType(l.itemType)+">) elements);\n");
             sb.append("        else for (" + printType(l.itemType) + " elem : elements) l.add(elem);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
