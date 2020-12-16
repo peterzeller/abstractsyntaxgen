@@ -639,7 +639,7 @@ public class Generator {
             if (!hasField(c, field)) {
                 continue;
             }
-            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + ");\n");
+            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + "());\n");
 
         }
         sb.append("        return result;\n");
