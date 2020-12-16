@@ -249,7 +249,7 @@ public class TemplateAsgList {
 
 		sb.append("	public boolean structuralEquals(" + commonSupertypeName + " e) {\n");
 		sb.append("		if (e instanceof AsgList) {\n");
-		sb.append("			AsgList o = (AsgList) e;\n");
+		sb.append("			AsgList<?> o = (AsgList<?>) e;\n");
 		sb.append("			if (o.size() != size()) {\n");
 		sb.append("				return false;\n");
 		sb.append("			}\n");
@@ -264,7 +264,8 @@ public class TemplateAsgList {
 		sb.append("		}\n");
 		sb.append("		return false;\n");
 		sb.append("	}\n\n");
-		sb.append("	public void forEachElement(java.util.function.Consumer<? super Element> action) {\n");
+		sb.append("	@SuppressWarnings(\"unchecked\", \"rawtypes\")");
+		sb.append("	public void forEachElement(java.util.function.Consumer<? super " + commonSupertypeName + "> action) {\n");
 		sb.append("		list.forEach((java.util.function.Consumer) action);\n");
 		sb.append("	}\n");
 		sb.append("	public void trimToSize() {\n");

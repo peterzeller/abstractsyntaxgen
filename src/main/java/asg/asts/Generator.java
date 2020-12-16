@@ -1206,7 +1206,7 @@ public class Generator {
                 "    void clearAttributesLocal();\n" +
                 "    " + getCommonSupertypeType() + " get(int i);\n" +
                 "    " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement);\n" +
-                "    void forEachElement(java.util.function.Consumer<? super Element> action);\n" +
+                "    void forEachElement(java.util.function.Consumer<? super " + getCommonSupertypeType() + "> action);\n" +
                 "    default void trimToSize() {" +
                 "        forEachElement(" + getCommonSupertypeType() + "::trimToSize);" +
                 "    }"+
