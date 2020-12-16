@@ -490,7 +490,7 @@ public class Generator {
         if (prog.hasElement(typ)) {
             return prog.getElement(typ).getName(typePrefix);
         }
-        return "this."+typ;
+        return typ;
     }
 
 
@@ -628,7 +628,7 @@ public class Generator {
                 sb.append(", ");
             }
             if (!p.isRef && prog.hasElement(p.getTyp())) {
-                sb.append("(" + printType(p.getTyp()) + ") " + p.name + ".copy()");
+                sb.append("(this." + printType(p.getTyp()) + ") " + p.name + ".copy()");
             } else {
                 sb.append(p.name);
             }
