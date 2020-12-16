@@ -490,7 +490,7 @@ public class Generator {
         if (prog.hasElement(typ)) {
             return prog.getElement(typ).getName(typePrefix);
         }
-        return typ;
+        return "this."+typ;
     }
 
 
