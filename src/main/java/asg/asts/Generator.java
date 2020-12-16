@@ -628,7 +628,7 @@ public class Generator {
                 sb.append(", ");
             }
             if (!p.isRef && prog.hasElement(p.getTyp())) {
-                sb.append("(this." + printType(p.getTyp()) + ") " + p.name + ".copy()");
+                sb.append("(" + printType(p.getTyp()) + ") " + "this." + p.name + ".copy()");
             } else {
                 sb.append(p.name);
             }
