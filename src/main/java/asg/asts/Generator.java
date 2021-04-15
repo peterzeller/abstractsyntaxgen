@@ -603,7 +603,7 @@ public class Generator {
     private void createForEachMethod(ConstructorDef c, StringBuilder sb) {
         sb.append("\n");
         sb.append("    @Override\n");
-        sb.append("    public void forEachElement(java.util.function.Consumer<? super " + commonSuperType.getName() + "> action) {\n");
+        sb.append("    public void forEachElement(java.util.function.Consumer<? super " + getCommonSupertypeType() + "> action) {\n");
         for (Parameter p : c.parameters) {
             if (prog.hasElement(p.getTyp()) && !p.isRef) {
                 sb.append("        action.accept(this." + p.name + ");\n");
@@ -628,7 +628,7 @@ public class Generator {
                 sb.append(", ");
             }
             if (!p.isRef && prog.hasElement(p.getTyp())) {
-                sb.append("(" + printType(p.getTyp()) + ") " + p.name + ".copy()");
+                sb.append("(" + printType(p.getTyp()) + ") " + "this." + p.name + ".copy()");
             } else {
                 sb.append(p.name);
             }
@@ -639,7 +639,7 @@ public class Generator {
             if (!hasField(c, field)) {
                 continue;
             }
-            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + ");\n");
+            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + "());\n");
 
         }
         sb.append("        return result;\n");
@@ -946,7 +946,7 @@ public class Generator {
 
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-            sb.append("        if (elements instanceof Collection) l.addAll((Collection) elements);\n");
+            sb.append("        if (elements instanceof Collection) l.addAll((Collection<? extends "+printType(l.itemType)+">) elements);\n");
             sb.append("        else for (" + printType(l.itemType) + " elem : elements) l.add(elem);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
@@ -1169,12 +1169,6 @@ public class Generator {
 
         createCopyWithRefsMethod(l, sb);
 
-        // deprecate generic set
-        sb.append("    /** @deprecated  this is the generic set method, so probably the element type is wrong */\n");
-        sb.append("    @Override @Deprecated\n");
-        sb.append("    public abstract " + getCommonSupertypeType() +
-                " set(int i, " + getCommonSupertypeType() + " e);\n\n");
-
         createAttributeStubs(l, sb);
         createFieldStubs(l, sb);
 
@@ -1206,7 +1200,7 @@ public class Generator {
                 "    void clearAttributesLocal();\n" +
                 "    " + getCommonSupertypeType() + " get(int i);\n" +
                 "    " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement);\n" +
-                "    void forEachElement(java.util.function.Consumer<? super Element> action);\n" +
+                "    void forEachElement(java.util.function.Consumer<? super " + getCommonSupertypeType() + "> action);\n" +
                 "    default void trimToSize() {" +
                 "        forEachElement(" + getCommonSupertypeType() + "::trimToSize);" +
                 "    }"+
