@@ -23,12 +23,13 @@ public class TemplateAsgList {
 		sb.append("\n");
 		
 		sb.append("	public void addFront(T t) { add(0, t); }\n");
-		
+
 		sb.append("	public List<T> removeAll() {\n");
-		sb.append("		List<T> result = new ArrayList<T>();\n");
-		sb.append("		while (!isEmpty()) {\n");
-		sb.append("			result.add(remove(0));\n");
+		sb.append("		List<T> result = new ArrayList<T>(list);\n");
+		sb.append("		for (T t : result) {\n");
+		sb.append("			other_clearParent(t);\n");
 		sb.append("		}\n");
+		sb.append("		list.clear();\n");
 		sb.append("		return result;\n");
 		sb.append("	}\n");
 		
@@ -192,26 +193,22 @@ public class TemplateAsgList {
 		sb.append("\n");
 		sb.append("	@Override\n");
 		sb.append("	public boolean removeAll(Collection<?> c) {\n");
-		sb.append("		boolean changed = false;\n");
-		sb.append("		for (Object o : c) {\n");
-		sb.append("			changed = remove(o) || changed; // order important here\n");
+		sb.append("		for (T t : list) {\n");
+		sb.append("			if (c.contains(t)) {\n");
+		sb.append("				other_clearParent(t);\n");
+		sb.append("			}\n");
 		sb.append("		}\n");
-		sb.append("		return true;\n");
+		sb.append("		return list.removeAll(c);\n");
 		sb.append("	}\n");
 		sb.append("\n");
 		sb.append("	@Override\n");
 		sb.append("	public boolean retainAll(Collection<?> c) {\n");
-		sb.append("		ListIterator<T> li = list.listIterator();\n");
-		sb.append("		boolean changed = false;\n");
-		sb.append("		while (li.hasNext()) {\n");
-		sb.append("			T t = li.next();\n");
+		sb.append("		for (T t : list) {\n");
 		sb.append("			if (!c.contains(t)) {\n");
-		sb.append("				li.remove();\n");
 		sb.append("				other_clearParent(t);\n");
-		sb.append("				changed  = true;\n");
 		sb.append("			}\n");
 		sb.append("		}\n");
-		sb.append("		return changed;\n");
+		sb.append("		return list.retainAll(c);\n");
 		sb.append("	}\n");
 		sb.append("\n");
 		sb.append("	@Override\n");
