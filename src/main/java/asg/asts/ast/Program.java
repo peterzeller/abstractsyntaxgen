@@ -5,12 +5,12 @@ import java.util.*;
 
 public class Program {
 
-	public final List<ListDef> listDefs = new LinkedList<ListDef>();
-	public final List<CaseDef> caseDefs = new LinkedList<CaseDef>();
-	public final List<ConstructorDef> constructorDefs = new LinkedList<ConstructorDef>();
-	public final List<AttributeDef> attrDefs = new LinkedList<AttributeDef>();
-	public final List<FieldDef> fieldDefs = new ArrayList<FieldDef>();
-	public final Map<String, AstEntityDefinition> definitions = new HashMap<String, AstEntityDefinition>();
+	public final List<ListDef> listDefs = new LinkedList<>();
+	public final List<CaseDef> caseDefs = new LinkedList<>();
+	public final List<ConstructorDef> constructorDefs = new LinkedList<>();
+	public final List<AttributeDef> attrDefs = new LinkedList<>();
+	public final List<FieldDef> fieldDefs = new ArrayList<>();
+	public final Map<String, AstEntityDefinition> definitions = new HashMap<>();
 	private String packageName;
 	private String typePrefix = "";
 
@@ -98,15 +98,15 @@ public class Program {
 		StringBuilder sb = new StringBuilder();
 		sb.append("\nCase Types: \n");
 		for (CaseDef x : caseDefs) {
-			sb.append(x + "\n");
+			sb.append(x).append("\n");
 		}
 		sb.append("\nConstructors: \n");
 		for (ConstructorDef x : constructorDefs) {
-			sb.append(x + "\n");
+			sb.append(x).append("\n");
 		}
 		sb.append("\nLists: \n");
 		for (ListDef x : listDefs) {
-			sb.append(x + "\n");
+			sb.append(x).append("\n");
 		}
 		
 		return sb.toString();

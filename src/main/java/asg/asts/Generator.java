@@ -67,9 +67,7 @@ public class Generator {
             if (base instanceof ConstructorDef) {
                 ConstructorDef baseClass = (ConstructorDef) base;
                 Set<Parameter> attributes = Sets.newLinkedHashSet();
-                for (Parameter p : baseClass.parameters) {
-                    attributes.add(p);
-                }
+                attributes.addAll(baseClass.parameters);
                 if (commonAttributes == null) {
                     commonAttributes = attributes;
                 } else {
@@ -430,27 +428,27 @@ public class Generator {
     }
 
     private String printArgs(List<Parameter> parameters2) {
-        String result = "";
+        StringBuilder result = new StringBuilder();
         for (Parameter p : parameters2) {
-            result += ", " + p.name;
+            result.append(", ").append(p.name);
         }
-        return result;
+        return result.toString();
     }
 
     private String printParams(List<Parameter> parameters2) {
         if (parameters2 == null) {
             return "";
         }
-        String result = "";
+        StringBuilder result = new StringBuilder();
         boolean first = true;
         for (Parameter p : parameters2) {
             if (!first) {
-                result += ", ";
+                result.append(", ");
             }
-            result += printType(p.getTyp()) + " " + p.name;
+            result.append(printType(p.getTyp())).append(" ").append(p.name);
             first = false;
         }
-        return result;
+        return result.toString();
     }
 
     private void createConstructor(ConstructorDef c, StringBuilder sb) {
@@ -653,7 +651,7 @@ public class Generator {
         // then fix up all references using a visitor:
         Collection<AstEntityDefinition> childTypes = transientChildTypes.get(c);
         childTypes.remove(null);
-        List<ConstructorDef> childTypesWithRefs = new ArrayList<ConstructorDef>();
+        List<ConstructorDef> childTypesWithRefs = new ArrayList<>();
         for (AstEntityDefinition childType : childTypes) {
             if (childType instanceof ConstructorDef) {
                 ConstructorDef constructorChild = (ConstructorDef) childType;
@@ -858,7 +856,7 @@ public class Generator {
         sb.append("    public interface Visitor");
         sb.append(" {\n");
         sb.append("");
-        List<AstEntityDefinition> defs = new ArrayList<AstEntityDefinition>(prog.constructorDefs);
+        List<AstEntityDefinition> defs = new ArrayList<>(prog.constructorDefs);
         defs.addAll(prog.listDefs);
 
         for (AstEntityDefinition contained : defs) {

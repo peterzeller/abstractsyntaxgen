@@ -28,14 +28,14 @@ public class CaseDef extends AstEntityDefinition {
 	
 	@Override
 	public String toString() {
-		String result = name + " = ";
+		StringBuilder result = new StringBuilder(name + " = ");
 		boolean first = true;
 		for (Alternative a : alternatives) {
-			if (!first) result += " | ";
-			result += a.name;
+			if (!first) result.append(" | ");
+			result.append(a.name);
 			first = false;
 		}
-		return result;
+		return result.toString();
 	}
 
 	public void addAlternative(String alternative) {

@@ -49,7 +49,7 @@ public class ProdType {
 		StringBuilder sb = new StringBuilder();
 		sb.append("ProdType[");
 		for (Entry<String, SimpleType> e : data.entrySet()) {
-			sb.append(e.getKey() + " -> " + e.getValue() + ", ");
+			sb.append(e.getKey()).append(" -> ").append(e.getValue()).append(", ");
 		}
 		sb.append("]");
 		return sb.toString();

@@ -2,8 +2,6 @@ package asg.grammars.ast;
 
 import org.antlr.v4.runtime.Token;
 
-import asg.grammars.GrammarTranslation;
-
 public class ProdId extends ProdNamed {
 
 	public final String text;

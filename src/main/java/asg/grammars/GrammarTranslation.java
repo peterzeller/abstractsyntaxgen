@@ -20,7 +20,7 @@ public class GrammarTranslation {
 
 	public void translate() {
 		sb.append(FileGenerator.PARSEQ_COMMENT + "\n\n");
-		sb.append("grammar " + prog.getFactoryName() + ";\n\n");
+		sb.append("grammar ").append(prog.getFactoryName()).append(";\n\n");
 		
 		for (Rule r : grammar.rules) {
 			translateRule(r);
@@ -34,7 +34,7 @@ public class GrammarTranslation {
 		}
 		sb.append(r.name);
 		if (!r.returnType.equals("void")) {
-			sb.append(" returns [" + r.returnType + " result] ");
+			sb.append(" returns [").append(r.returnType).append(" result] ");
 		}
 		sb.append(":\n");
 		r.production.print(sb);

@@ -27,17 +27,17 @@ public class ConstructorDef extends AstBaseTypeDefinition {
 
 	@Override
 	public String toString() {
-		String result = name + "(";
+		StringBuilder result = new StringBuilder(name + "(");
 		boolean first = true;
 		for (Parameter p : parameters) {
 			if (!first) {
-				result += ", ";
+				result.append(", ");
 			}
-			result += p;
+			result.append(p);
 			first = false;
 		}
-		result +=")";
-		return result;
+		result.append(")");
+		return result.toString();
 	}
 
 	public void addParam(boolean ref, boolean ignoreEquality, String type, String name) {

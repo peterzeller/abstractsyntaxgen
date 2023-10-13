@@ -244,15 +244,15 @@ public class TemplateAsgList {
 
 
 
-		sb.append("	public boolean structuralEquals(" + commonSupertypeName + " e) {\n");
+		sb.append("	public boolean structuralEquals(").append(commonSupertypeName).append(" e) {\n");
 		sb.append("		if (e instanceof AsgList) {\n");
 		sb.append("			AsgList<?> o = (AsgList<?>) e;\n");
 		sb.append("			if (o.size() != size()) {\n");
 		sb.append("				return false;\n");
 		sb.append("			}\n");
 		sb.append("			for (int i=0; i<size(); i++) {\n");
-		sb.append("				" + commonSupertypeName + " a = (" + commonSupertypeName + ") get(i);\n");
-		sb.append("				" + commonSupertypeName + " b = (" + commonSupertypeName + ") o.get(i);\n");
+		sb.append("				").append(commonSupertypeName).append(" a = (").append(commonSupertypeName).append(") get(i);\n");
+		sb.append("				").append(commonSupertypeName).append(" b = (").append(commonSupertypeName).append(") o.get(i);\n");
 		sb.append("				if (!a.structuralEquals(b)) {\n");
 		sb.append("					return false;\n");
 		sb.append("				}\n");
@@ -262,7 +262,7 @@ public class TemplateAsgList {
 		sb.append("		return false;\n");
 		sb.append("	}\n\n");
 		sb.append("	@SuppressWarnings({\"unchecked\", \"rawtypes\"})");
-		sb.append("	public void forEachElement(java.util.function.Consumer<? super " + commonSupertypeName + "> action) {\n");
+		sb.append("	public void forEachElement(java.util.function.Consumer<? super ").append(commonSupertypeName).append("> action) {\n");
 		sb.append("		list.forEach((java.util.function.Consumer) action);\n");
 		sb.append("	}\n");
 		sb.append("	public void trimToSize() {\n");

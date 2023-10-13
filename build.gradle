@@ -1,20 +1,23 @@
 apply plugin: 'java'
-apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: 'antlr'
 apply plugin:'application'
 mainClassName = "asg.Main"
 
 group = 'com.github.peterzeller'
-version = '0.3.0'
+version = '0.3.1'
 
 description = """Abstract Syntax Generator"""
 
 
 String genDir = "$projectDir/src-generated"
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
 
 sourceSets {
     main {
@@ -29,9 +32,8 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    antlr 'org.antlr:antlr4:4.5.3'
-    compile 'org.antlr:antlr4-runtime:4.5.3'
-    compile 'com.google.guava:guava:19.0'
+    antlr "org.antlr:antlr4:4.13.1"
+    implementation 'com.google.guava:guava:32.1.3-jre'
 }
 
 
@@ -45,12 +47,12 @@ clean.doFirst {
 
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
-    classifier = 'javadoc'
+    archiveClassifier.set('javadoc')
     from 'build/docs/javadoc'
 }
 
 task sourcesJar(type: Jar) {
-    classifier = 'sources'
+    archiveClassifier.set('sources')
     from sourceSets.main.allSource
 }
 
@@ -65,60 +67,4 @@ def isReleaseBuild() {
     return version.contains("SNAPSHOT") == false
 }
 
-signing {
-    required { isReleaseBuild() && gradle.taskGraph.hasTask("uploadArchives") }
-    sign configurations.archives
-    // sign configurations.runtimeArchives
-}
 
-
-// task for uploading archives to maven:
-// taken from http://jedicoder.blogspot.de/2011/11/automated-gradle-project-deployment-to.html
-// taken from http://central.sonatype.org/pages/gradle.html
-uploadArchives {
-    repositories {
-        mavenDeployer {
-            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
-
-            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                authentication(userName: hasProperty('ossrhUsername')?ossrhUsername:'', password: hasProperty('ossrhPassword')?ossrhPassword:'')
-            }
-
-            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                authentication(userName: hasProperty('ossrhUsername')?ossrhUsername:'', password: hasProperty('ossrhPassword')?ossrhPassword:'')
-            }
-
-//             repository(url : "file:///home/peter/temp/mvn/")
-
-            pom.project {
-                name 'Abstract Syntax Tree Generator' // TODO name and description
-                packaging 'jar'
-                description 'Generated Java classes to represent abstract syntax trees.'
-                url 'https://github.com/peterzeller/abstractsyntaxgen'
-
-                scm {
-                    url 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
-                    connection 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
-                    developerConnection 'scm:https://github.com/peterzeller/abstractsyntaxgen.git'
-                }
-
-                licenses {
-                    license {
-                        name 'The Apache Software License, Version 2.0'
-                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution 'repo'
-                    }
-                }
-
-                developers {
-                    developer {
-                        id 'pzeller'
-                        name 'Peter Zeller'
-                        email 'p_zeller@cs.uni-kl.de'
-                    }
-                }
-            }
-
-        }
-    }
-}

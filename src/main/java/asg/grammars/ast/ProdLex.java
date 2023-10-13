@@ -2,8 +2,6 @@ package asg.grammars.ast;
 
 import org.antlr.v4.runtime.Token;
 
-import asg.grammars.GrammarTranslation;
-
 public class ProdLex extends ProdNamed {
 
 	public final String lex;
@@ -16,7 +14,7 @@ public class ProdLex extends ProdNamed {
 	@Override
 	public void print(StringBuilder tr) {
 		super.printName(tr);
-		tr.append("'" + lex + "'");
+		tr.append("'").append(lex).append("'");
 	}
 
 	@Override
