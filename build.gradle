@@ -66,8 +66,21 @@ artifacts {
 }
 
 
-def isReleaseBuild() {
-    return version.contains("SNAPSHOT") == false
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            groupId = 'com.github.peterzeller'
+            artifactId = 'abstractsyntaxgen'
+            version = '0.3.3'
+        }
+    }
+    repositories {
+        mavenLocal()
+    }
 }
 
+// Ensure artifacts are published to mavenLocal() during the build
+build.dependsOn publishToMavenLocal
 
