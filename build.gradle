@@ -6,7 +6,7 @@ apply plugin:'application'
 mainClassName = "asg.Main"
 
 group = 'com.github.peterzeller'
-version = '0.3.1'
+version = '0.3.3'
 
 description = """Abstract Syntax Generator"""
 
@@ -47,11 +47,13 @@ clean.doFirst {
 
 
 task javadocJar(type: Jar, dependsOn: javadoc) {
+    dependsOn 'generateGrammarSource'
     archiveClassifier.set('javadoc')
     from 'build/docs/javadoc'
 }
 
 task sourcesJar(type: Jar) {
+    dependsOn 'generateGrammarSource'
     archiveClassifier.set('sources')
     from sourceSets.main.allSource
 }
