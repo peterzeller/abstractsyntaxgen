@@ -211,13 +211,15 @@ public class TemplateAsgList {
 		sb.append("		return list.retainAll(c);\n");
 		sb.append("	}\n");
 		sb.append("\n");
-		sb.append("	@Override\n");
-		sb.append("	public T set(int index, T element) {\n");
-		sb.append("		other_setParentToThis(element);\n");
-		sb.append("		T t = list.set(index, element);		\n");
-		sb.append("		other_clearParent(t);\n");
-		sb.append("		return t;\n");
-		sb.append("	}\n");
+		sb.append("    @Override\n");
+		sb.append("    public T set(int index, T element) {\n");
+		sb.append("        T old = list.get(index);\n");
+		sb.append("        if (old == element) return old;\n");
+		sb.append("        other_setParentToThis(element);\n");
+		sb.append("        T t = list.set(index, element);\n");
+		sb.append("        other_clearParent(t);\n");
+		sb.append("        return t;\n");
+		sb.append("    }\n");
 		sb.append("\n");
 		sb.append("	@Override\n");
 		sb.append("	public int size() {\n");
@@ -241,9 +243,6 @@ public class TemplateAsgList {
 		sb.append("	\n");
 		sb.append("	\n");
 		sb.append("	\n");
-
-
-
 		sb.append("	public boolean structuralEquals(").append(commonSupertypeName).append(" e) {\n");
 		sb.append("		if (e instanceof AsgList) {\n");
 		sb.append("			AsgList<?> o = (AsgList<?>) e;\n");
@@ -268,6 +267,24 @@ public class TemplateAsgList {
 		sb.append("	public void trimToSize() {\n");
 		sb.append("		list.trimToSize();\n");
 		sb.append("	}\n");
+		sb.append("    /**\n");
+		sb.append("     * Replace the first occurrence of oldElem by identity (==), updating parent links.\n");
+		sb.append("     * @return true if replaced, false if not found\n");
+		sb.append("     */\n");
+		sb.append("    @SuppressWarnings(\"unchecked\")\n");
+		sb.append("    public boolean replaceExact(Object oldElem, T newElem) {\n");
+		sb.append("        ListIterator<T> it = list.listIterator();\n");
+		sb.append("        while (it.hasNext()) {\n");
+		sb.append("            T curr = it.next();\n");
+		sb.append("            if (curr == oldElem) {\n");
+		sb.append("                if (curr != null) other_clearParent(curr);\n");
+		sb.append("                other_setParentToThis(newElem);\n");
+		sb.append("                it.set(newElem);\n");
+		sb.append("                return true;\n");
+		sb.append("            }\n");
+		sb.append("        }\n");
+		sb.append("        return false;\n");
+		sb.append("    }\n");
 		sb.append("}\n");
 
 		

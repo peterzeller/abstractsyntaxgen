@@ -525,9 +525,17 @@ public class Generator {
 
 
     private void createReplaceByMethod(StringBuilder sb) {
-        sb.append("    public void replaceBy(" + getCommonSupertypeType() + " other) {\n");
+        String T = getCommonSupertypeType();
+        sb.append("    public void replaceBy(").append(T).append(" other) {\n");
         sb.append("        if (parent == null)\n");
         sb.append("            throw new RuntimeException(\"Node not attached to tree.\");\n");
+        sb.append("        if (parent instanceof AsgList) {\n");
+        sb.append("            if (!((AsgList<").append(T).append(">) parent).replaceExact(this, other)) {\n");
+        sb.append("                throw new RuntimeException(\"Node not found in parent list.\");\n");
+        sb.append("            }\n");
+        sb.append("            return;\n");
+        sb.append("        }\n");
+        sb.append("        // Fallback (should not happen): linear scan\n");
         sb.append("        for (int i=0; i<parent.size(); i++) {\n");
         sb.append("            if (parent.get(i) == this) {\n");
         sb.append("                parent.set(i, other);\n");
@@ -536,6 +544,7 @@ public class Generator {
         sb.append("        }\n");
         sb.append("    }\n\n");
     }
+
 
 
     private String getNullableAnnotation() {
