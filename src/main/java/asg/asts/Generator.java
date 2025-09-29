@@ -252,7 +252,7 @@ public class Generator {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
         addSuppressWarningAnnotations(sb);
-        sb.append("class " + c.getName(typePrefix) + "Impl implements ");
+        sb.append("final class " + c.getName(typePrefix) + "Impl implements ");
         sb.append(c.getName(typePrefix) + "{\n");
 
         // create constructor
@@ -570,7 +570,6 @@ public class Generator {
     }
 
 
-
     private String getNullableAnnotation() {
 //        return "@org.eclipse.jdt.annotation.Nullable"; // TODO add flag
         return "";
@@ -842,38 +841,29 @@ public class Generator {
     private void generateBaseClass_Interface(ConstructorDef c) {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
-        sb.append("public interface " + c.getName(typePrefix) + " extends ");
+
+        sb.append("public sealed interface ").append(c.getName(typePrefix)).append(" extends ");
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
-            if (!first) {
-                sb.append(", ");
-            }
+            if (!first) sb.append(", ");
             sb.append(supertype.getName(typePrefix));
             first = false;
         }
-
-
         sb.append(" {\n");
 
+        // permits only its Impl
+        sb.append("    permits ").append(c.getName(typePrefix)).append("Impl;\n\n");
 
-        // create getters and setters for parameters:
         for (Parameter p : c.parameters) {
-            sb.append("    void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ");\n");
-            sb.append("    " + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "();\n");
+            sb.append("    void set").append(toFirstUpper(p.name)).append("(").append(printType(p.getTyp())).append(" ").append(p.name).append(");\n");
+            sb.append("    ").append(printType(p.getTyp())).append(" get").append(toFirstUpper(p.name)).append("();\n");
         }
 
-        // getParent method:
-        sb.append("    " + getNullableAnnotation() + getCommonSupertypeType() + " getParent();\n");
-
-
-        // copy method
-        sb.append("    " + c.getName(typePrefix) + " copy();\n");
-        sb.append("    " + c.getName(typePrefix) + " copyWithRefs();\n");
-
-        // clear attributes method
+        sb.append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n");
+        sb.append("    ").append(c.getName(typePrefix)).append(" copy();\n");
+        sb.append("    ").append(c.getName(typePrefix)).append(" copyWithRefs();\n");
         sb.append("    void clearAttributes();\n");
         sb.append("    void clearAttributesLocal();\n");
-
 
         createAttributeStubs(c, sb);
         createFieldStubs(c, sb);
@@ -881,6 +871,7 @@ public class Generator {
         sb.append("}\n");
         fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
     }
+
 
     private void generateVisitorInterface(AstEntityDefinition d, StringBuilder sb) {
         sb.append("    public abstract void accept(Visitor v);\n");
@@ -978,7 +969,7 @@ public class Generator {
 
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(Iterable<" + printType(l.itemType) + "> elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-            sb.append("        if (elements instanceof Collection) l.addAll((Collection<? extends "+printType(l.itemType)+">) elements);\n");
+            sb.append("        if (elements instanceof Collection) l.addAll((Collection<? extends " + printType(l.itemType) + ">) elements);\n");
             sb.append("        else for (" + printType(l.itemType) + " elem : elements) l.add(elem);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
@@ -990,47 +981,45 @@ public class Generator {
     }
 
     private void generateInterfaceType(CaseDef c) {
-        if (c == commonSuperType) {
-            // generated somewhere else
-            return;
-        }
+        if (c == commonSuperType) return;
+
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
-        sb.append("public interface " + c.getName(typePrefix) + " extends ");
+
+        sb.append("public sealed interface ").append(c.getName(typePrefix)).append(" extends ");
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
-            if (!first) {
-                sb.append(", ");
-            }
+            if (!first) sb.append(", ");
             sb.append(supertype.getName(typePrefix));
             first = false;
         }
+        sb.append(" {\n");
 
-        sb.append("{\n");
+        // permits: its Impl + its direct sub-interfaces (if any)
+        List<String> permits = new ArrayList<>();
+        permits.add(c.getName(typePrefix) + "Impl");
+        for (AstEntityDefinition sub : directSubTypes.get(c)) {
+            permits.add(sub.getName(typePrefix));
+        }
+        sb.append("    permits ").append(String.join(", ", permits)).append(";\n\n");
 
         // calculate common attributes:
         Set<Parameter> attributes = calculateAttributes(c);
 
-        // create getters and setters for parameters:
         for (Parameter p : attributes) {
-            sb.append("    void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ");\n");
-            sb.append("    " + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "();\n");
+            sb.append("    void set").append(toFirstUpper(p.name)).append("(").append(printType(p.getTyp())).append(" ").append(p.name).append(");\n");
+            sb.append("    ").append(printType(p.getTyp())).append(" get").append(toFirstUpper(p.name)).append("();\n");
         }
 
-        // getParent method:
-        sb.append("    " + getNullableAnnotation() + getCommonSupertypeType() + " getParent();\n");
-
+        sb.append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n");
 
         generateMatcher(c, sb);
 
-        // copy method
-        sb.append("    " + printType(c.getName()) + " copy();\n");
-        sb.append("    " + printType(c.getName()) + " copyWithRefs();\n");
-
+        sb.append("    ").append(printType(c.getName())).append(" copy();\n");
+        sb.append("    ").append(printType(c.getName())).append(" copyWithRefs();\n");
 
         createAttributeStubs(c, sb);
         createFieldStubs(c, sb);
-
 
         sb.append("}\n");
         fileGenerator.createFile(c.getName(typePrefix) + ".java", sb);
@@ -1109,7 +1098,7 @@ public class Generator {
         printProlog(sb);
 
         addSuppressWarningAnnotations(sb);
-        sb.append("class " + l.getName(typePrefix) + "Impl extends " + l.getName(typePrefix) + " {\n ");
+        sb.append("final class " + l.getName(typePrefix) + "Impl extends " + l.getName(typePrefix) + " {\n ");
 
         createGetSetParentMethods(sb);
 
@@ -1178,29 +1167,29 @@ public class Generator {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
         addSuppressWarningAnnotations(sb);
-        sb.append("public abstract class " + l.getName(typePrefix) + " extends AsgList<" + printType(l.itemType) + "> implements ");
+
+        sb.append("public sealed abstract class ").append(l.getName(typePrefix))
+                .append(" extends AsgList<").append(printType(l.itemType)).append("> implements ");
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(l)) {
-            if (!first) {
-                sb.append(", ");
-            }
+            if (!first) sb.append(", ");
             sb.append(supertype.getName(typePrefix));
             first = false;
         }
-        sb.append("{\n");
+        sb.append(" {\n");
 
+        // permits its Impl
+        sb.append("    permits ").append(l.getName(typePrefix)).append("Impl;\n\n");
 
-        // copy method
-        sb.append("    public " + l.getName(typePrefix) + " copy() {\n");
-        sb.append("        " + l.getName(typePrefix) + " result = new " + l.getName(typePrefix) + "Impl();\n");
-        sb.append("        for (" + printType(l.itemType) + " elem : this) {\n");
-        sb.append("            result.add((" + printType(l.itemType) + ") elem.copy());\n");
+        sb.append("    public ").append(l.getName(typePrefix)).append(" copy() {\n");
+        sb.append("        ").append(l.getName(typePrefix)).append(" result = new ").append(l.getName(typePrefix)).append("Impl();\n");
+        sb.append("        for (").append(printType(l.itemType)).append(" elem : this) {\n");
+        sb.append("            result.add((").append(printType(l.itemType)).append(") elem.copy());\n");
         sb.append("        }\n");
         sb.append("        return result;\n");
         sb.append("    }\n\n");
 
         createCopyWithRefsMethod(l, sb);
-
         createAttributeStubs(l, sb);
         createFieldStubs(l, sb);
 
@@ -1223,65 +1212,95 @@ public class Generator {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
 
-        sb.append("public interface " + getCommonSupertypeType() + " {\n" +
-                "    " + getNullableAnnotation() + getCommonSupertypeType() + " getParent();\n" +
-                "    " + getCommonSupertypeType() + " copy();\n" +
-                "    " + getCommonSupertypeType() + " copyWithRefs();\n" +
-                "    int size();\n" +
-                "    void clearAttributes();\n" +
-                "    void clearAttributesLocal();\n" +
-                "    " + getCommonSupertypeType() + " get(int i);\n" +
-                "    " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement);\n" +
-                "    void forEachElement(java.util.function.Consumer<? super " + getCommonSupertypeType() + "> action);\n" +
-                "    default void trimToSize() {" +
-                "        forEachElement(" + getCommonSupertypeType() + "::trimToSize);" +
-                "    }"+
-                "    void setParent(" + getNullableAnnotation() + getCommonSupertypeType() + " parent);\n");
+        // --- sealed root + permits ---
+        List<String> permits = new ArrayList<>();
+        // 1) All case interfaces (except the synthetic root case)
+        for (CaseDef d : prog.caseDefs) {
+            if (d != commonSuperType) permits.add(d.getName(typePrefix));
+        }
+        // 2) All constructor interfaces (they directly extend/implement the root)
+        for (ConstructorDef d : prog.constructorDefs) {
+            permits.add(d.getName(typePrefix));
+        }
+        // 3) All list abstract classes (they also directly implement the root)
+        for (ListDef d : prog.listDefs) {
+            permits.add(d.getName(typePrefix));
+        }
 
-        // replace method
-        sb.append("    void replaceBy(" + getCommonSupertypeType() + " other);\n");
+        sb.append("public sealed interface ").append(getCommonSupertypeType())
+                .append(" permits ").append(String.join(", ", permits)).append(" {\n")
+                .append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n")
+                .append("    ").append(getCommonSupertypeType()).append(" copy();\n")
+                .append("    ").append(getCommonSupertypeType()).append(" copyWithRefs();\n")
+                .append("    int size();\n")
+                .append("    void clearAttributes();\n")
+                .append("    void clearAttributesLocal();\n")
+                .append("    ").append(getCommonSupertypeType()).append(" get(int i);\n")
+                .append("    ").append(getCommonSupertypeType()).append(" set(int i, ").append(getCommonSupertypeType()).append(" newElement);\n")
+                .append("    void forEachElement(java.util.function.Consumer<? super ").append(getCommonSupertypeType()).append("> action);\n")
+                .append("    default void trimToSize() { forEachElement(").append(getCommonSupertypeType()).append("::trimToSize); }\n")
+                .append("    void setParent(").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" parent);\n")
+                .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
+                .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
+                .append("    default java.util.List<Integer> pathTo(").append(getCommonSupertypeType()).append("  elem) {\n")
+                .append("        java.util.List<Integer> path = new java.util.ArrayList<>();\n")
+                .append("        while (elem != this) {\n")
+                .append("            if (elem == null) { throw new RuntimeException(\"Element \" + elem + \" is not a parent of \" + this); }\n")
+                .append("            ").append(getCommonSupertypeType()).append(" parent = elem.getParent();\n")
+                .append("            for (int i = 0; i < parent.size(); i++) {\n")
+                .append("                if (parent.get(i) == elem) { path.add(i); break; }\n")
+                .append("            }\n")
+                .append("            elem = parent;\n")
+                .append("        }\n")
+                .append("        java.util.Collections.reverse(path);\n")
+                .append("        return path;\n")
+                .append("    }\n")
+                .append("    default ").append(getCommonSupertypeType()).append(" followPath(Iterable<Integer> path) {\n")
+                .append("        ").append(getCommonSupertypeType()).append(" elem = this;\n")
+                .append("        for (Integer i : path) { elem = elem.get(i); }\n")
+                .append("        return elem;\n")
+                .append("    }\n");
 
-        // structural equals method
-        sb.append("    boolean structuralEquals(" + getCommonSupertypeType() + " elem);\n");
-
-        // pathTo and followPath methods:
-        sb.append("    default List<Integer> pathTo(" + getCommonSupertypeType() + "  elem) {\n");
-        sb.append("        List<Integer> path = new ArrayList<>();\n");
-        sb.append("        while (elem != this) {\n");
-        sb.append("            if (elem == null) {\n");
-        sb.append("                throw new RuntimeException(\"Element \" + elem + \" is not a parent of \" + this);\n");
-        sb.append("            }\n");
-        sb.append("            " + getCommonSupertypeType() + " parent = elem.getParent();\n");
-        sb.append("            for (int i = 0; i < parent.size(); i++) {\n");
-        sb.append("                if (parent.get(i) == elem) {\n");
-        sb.append("                    path.add(i);\n");
-        sb.append("                    break;\n");
-        sb.append("                }\n");
-        sb.append("            }\n");
-        sb.append("            elem = parent;\n");
-        sb.append("        }\n");
-        sb.append("        Collections.reverse(path);\n");
-        sb.append("        return path;\n");
-        sb.append("    }\n");
-        sb.append("\n");
-        sb.append("    default " + getCommonSupertypeType() + " followPath(Iterable<Integer> path) {\n");
-        sb.append("        " + getCommonSupertypeType() + " elem = this;\n");
-        sb.append("        for (Integer i : path) {\n");
-        sb.append("            elem = elem.get(i);\n");
-        sb.append("        }\n");
-        sb.append("        return elem;\n");
-        sb.append("    }\n");
-
-
+        // keep your existing matcher + visitor + attribute/field stubs
         generateMatcher(commonSuperType, sb);
         generateVisitorInterface(commonSuperType, sb);
         createAttributeStubs(commonSuperType, sb);
         createFieldStubs(commonSuperType, sb);
-        sb.append("}\n\n");
 
+        // --- Pattern-matching switch matcher (Java 21+) ---
+        // Functional interface group
+        sb.append("    public interface ").append(getCommonSupertypeType()).append("Switch<T> {\n");
+        for (ConstructorDef d : prog.constructorDefs) {
+            String t = d.getName(typePrefix);
+            sb.append("        T case_").append(t).append("(").append(t).append("Impl n);\n");
+        }
+        for (ListDef d : prog.listDefs) {
+            String t = d.getName(typePrefix);
+            sb.append("        T case_").append(t).append("(").append(t).append("Impl n);\n");
+        }
+        sb.append("    }\n");
+
+        // Static method doing the pattern switch
+        sb.append("    static <T> T matchSwitch(").append(getCommonSupertypeType()).append(" e, ")
+                .append(getCommonSupertypeType()).append("Switch<T> fn) {\n")
+                .append("        return switch (e) {\n");
+        for (ConstructorDef d : prog.constructorDefs) {
+            String t = d.getName(typePrefix);
+            sb.append("            case ").append(t).append("Impl n -> fn.case_").append(t).append("(n);\n");
+        }
+        for (ListDef d : prog.listDefs) {
+            String t = d.getName(typePrefix);
+            sb.append("            case ").append(t).append("Impl n -> fn.case_").append(t).append("(n);\n");
+        }
+        sb.append("            default -> throw new IllegalStateException(\"Unknown node: \" + e.getClass());\n")
+                .append("        };\n")
+                .append("    }\n");
+
+        sb.append("}\n\n");
 
         fileGenerator.createFile(getCommonSupertypeType() + ".java", sb);
     }
+
 
     private void generateStandardList() {
         StringBuilder sb = new StringBuilder();
