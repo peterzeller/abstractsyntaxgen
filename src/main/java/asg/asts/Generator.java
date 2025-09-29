@@ -147,13 +147,27 @@ public class Generator {
     }
 
     private void calculateSubTypes() {
+        List<String> undefined = new ArrayList<>();
+
         for (CaseDef caseDef : prog.caseDefs) {
             for (Alternative alt : caseDef.alternatives) {
                 AstEntityDefinition subType = prog.getElement(alt.name);
+                if (subType == null) {
+                    undefined.add("case '" + caseDef.getName() + "' -> alternative '" + alt.name + "'");
+                    continue; // skip invalid entry
+                }
                 directSubTypes.put(caseDef, subType);
                 directSuperTypes.put(subType, caseDef);
             }
         }
+
+        if (!undefined.isEmpty()) {
+            String msg = "Undefined AST types referenced in case alternatives:\n  - "
+                    + String.join("\n  - ", undefined)
+                    + "\nPlease declare these types (constructor/list/case) before using them.";
+            throw new IllegalStateException(msg);
+        }
+
         // calculate base types of interfaces:
         for (CaseDef caseDef : prog.caseDefs) {
             caclulateCaseDefBaseTypes(caseDef);
@@ -166,7 +180,7 @@ public class Generator {
             }
         }
 
-        transientSubTypes = transientClosure(directSubTypes);
+        transientSubTypes  = transientClosure(directSubTypes);
         transientSuperTypes = transientClosure(directSuperTypes);
     }
 
@@ -989,6 +1003,7 @@ public class Generator {
         sb.append("public sealed interface ").append(c.getName(typePrefix)).append(" extends ");
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
+            if (supertype == null) continue; // defensive
             if (!first) sb.append(", ");
             sb.append(supertype.getName(typePrefix));
             first = false;
@@ -1340,19 +1355,25 @@ public class Generator {
      */
     private <T> Multimap<T, T> transientClosure(Multimap<T, T> start) {
         Multimap<T, T> result = HashMultimap.create();
-        result.putAll(start);
+        for (Entry<T, T> e : start.entries()) {
+            if (e.getKey() != null && e.getValue() != null) {
+                result.put(e.getKey(), e.getValue());
+            }
+        }
 
         boolean changed;
         do {
             Multimap<T, T> changes = HashMultimap.create();
-
             for (Entry<T, T> e1 : result.entries()) {
-                for (T t : result.get(e1.getValue())) {
-                    changes.put(e1.getKey(), t);
+                T v = e1.getValue();
+                if (v == null) continue;
+                for (T t : result.get(v)) {
+                    if (e1.getKey() != null && t != null) {
+                        changes.put(e1.getKey(), t);
+                    }
                 }
             }
             changed = result.putAll(changes);
-
         } while (changed);
 
         return result;
