@@ -1,12 +1,5 @@
 package asg;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-
-import org.antlr.v4.runtime.ANTLRFileStream;
-import org.antlr.v4.runtime.CommonTokenStream;
-
 import asg.asts.FileGenerator;
 import asg.asts.Generator;
 import asg.asts.ast.Program;
@@ -16,6 +9,12 @@ import asg.grammars.GrammarTranslation;
 import asg.grammars.parser.GrammarsParserLexer;
 import asg.grammars.parser.GrammarsParserParser;
 import asg.grammars.parser.GrammarsParserParser.GrammarFileContext;
+import org.antlr.v4.runtime.ANTLRFileStream;
+import org.antlr.v4.runtime.CommonTokenStream;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class Main {
 

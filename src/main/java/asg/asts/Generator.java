@@ -365,67 +365,91 @@ public class Generator {
 
             if (hasAttribute(c, attr)) {
                 if (attr.parameters == null) {
-                    sb.append("// circular = " + attr.circular + "\n");
+                    sb.append("// circular = ").append(attr.circular).append("\n");
                     if (attr.circular == null) {
-                        sb.append("    private int zzattr_" + attr.attr + "_state = 0;\n");
-                        sb.append("    private " + attr.returns + " zzattr_" + attr.attr + "_cache;\n");
-                        sb.append("    /** " + attr.comment + "*/\n");
-                        sb.append("    public " + attr.returns + " " + attr.attr + "() {\n");
-                        sb.append("        if (zzattr_" + attr.attr + "_state == 0) {\n");
-                        sb.append("            try {\n");
-                        sb.append("                zzattr_" + attr.attr + "_state = 1;\n");
-                        sb.append("                zzattr_" + attr.attr + "_cache = " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this);\n");
-                        sb.append("            } finally {\n");
-                        sb.append("                zzattr_" + attr.attr + "_state = 0;\n");
-                        sb.append("            }\n");
-                        sb.append("            zzattr_" + attr.attr + "_state = 2;\n");
-                        sb.append("        } else if (zzattr_" + attr.attr + "_state == 1) {\n");
-                        sb.append("            throw new CyclicDependencyError(this, \"" + attr.attr + "\");\n");
-                        sb.append("        }\n");
-                        sb.append("        return zzattr_" + attr.attr + "_cache;\n");
+                        // ---------- NON-CIRCULAR CACHED ATTRIBUTE ----------
+                        // State: 0 = uncached, 1 = computing (cycle), 2 = cached
+                        sb.append("    private byte zzattr_").append(attr.attr).append("_state = 0;\n");
+                        sb.append("    private ").append(attr.returns).append(" zzattr_").append(attr.attr).append("_cache;\n");
+                        sb.append("    /** ").append(attr.comment).append("*/\n");
+                        sb.append("    public ").append(attr.returns).append(" ").append(attr.attr).append("() {\n");
+                        sb.append("        byte s = zzattr_").append(attr.attr).append("_state;\n");
+                        sb.append("        if (s == 2) return zzattr_").append(attr.attr).append("_cache;\n");
+                        sb.append("        if (s == 1) throw new CyclicDependencyError(this, \"").append(attr.attr).append("\");\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_state = 1;\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_cache = ")
+                                .append(attr.implementedBy).append("((")
+                                .append(c.getName(typePrefix)).append(")this);\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_state = 2;\n");
+                        sb.append("        return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    }\n");
                     } else {
-                        // circular attribute
-                        sb.append("    private int zzattr_" + attr.attr + "_state = 0;\n");
-                        sb.append("    private " + attr.returns + " zzattr_" + attr.attr + "_cache;\n");
-                        sb.append("    /** " + attr.comment + "*/\n");
-                        sb.append("    public " + attr.returns + " " + attr.attr + "() {\n");
-                        sb.append("        if (zzattr_" + attr.attr + "_state == 0) {\n");
-                        sb.append("            zzattr_" + attr.attr + "_state = 1;\n");
-                        sb.append("            zzattr_" + attr.attr + "_cache = " + attr.circular + "();\n");
-                        sb.append("            while (true) {\n");
-                        sb.append("                " + attr.returns + " r = " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this);\n");
-                        sb.append("                if (zzattr_" + attr.attr + "_state == 3) {\n");
-                        sb.append("                    if (!zzattr_" + attr.attr + "_cache.equals(r)) {\n");
-                        sb.append("                        zzattr_" + attr.attr + "_cache = r;\n"); // not sure if correct
-                        sb.append("                        continue;\n");
-                        sb.append("                    }\n");
-                        sb.append("                }\n");
-                        sb.append("                zzattr_" + attr.attr + "_cache = r;\n");
-                        sb.append("                break;\n");
-                        sb.append("            }\n");
-                        sb.append("            zzattr_" + attr.attr + "_state = 2;\n");
-                        sb.append("        } else if (zzattr_" + attr.attr + "_state == 1) {\n");
-                        sb.append("            zzattr_" + attr.attr + "_state = 3;\n");
+                        // ---------- CIRCULAR (FIXPOINT) CACHED ATTRIBUTE ----------
+                        // States: 0 = uninitialized, 1 = iterating, 2 = fixed, 3 = touched-during-iteration
+                        sb.append("    private byte zzattr_").append(attr.attr).append("_state = 0;\n");
+                        sb.append("    private ").append(attr.returns).append(" zzattr_").append(attr.attr).append("_cache;\n");
+                        sb.append("    /** ").append(attr.comment).append("*/\n");
+                        sb.append("    public ").append(attr.returns).append(" ").append(attr.attr).append("() {\n");
+                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 2) {\n");
+                        sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("        }\n");
-                        sb.append("        return zzattr_" + attr.attr + "_cache;\n");
+                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 1) {\n");
+                        sb.append("            // Mark that we were queried during iteration\n");
+                        sb.append("            zzattr_").append(attr.attr).append("_state = 3;\n");
+                        sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
+                        sb.append("        }\n");
+                        sb.append("        // Initialize and iterate to a fixpoint\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_state = 1;\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_cache = ").append(attr.circular).append("();\n");
+                        sb.append("        while (true) {\n");
+                        sb.append("            ").append(attr.returns).append(" r = ")
+                                .append(attr.implementedBy).append("((")
+                                .append(c.getName(typePrefix)).append(")this);\n");
+                        sb.append("            if (zzattr_").append(attr.attr).append("_state == 3) {\n");
+                        sb.append("                // Another access happened during iteration -> keep iterating until stable\n");
+                        sb.append("                if (!java.util.Objects.equals(zzattr_").append(attr.attr).append("_cache, r)) {\n");
+                        sb.append("                    zzattr_").append(attr.attr).append("_cache = r;\n");
+                        sb.append("                    // continue loop\n");
+                        sb.append("                } else {\n");
+                        sb.append("                    // Stabilized after re-entrancy\n");
+                        sb.append("                    break;\n");
+                        sb.append("                }\n");
+                        sb.append("            } else {\n");
+                        sb.append("                // Normal iteration step\n");
+                        sb.append("                if (!java.util.Objects.equals(zzattr_").append(attr.attr).append("_cache, r)) {\n");
+                        sb.append("                    zzattr_").append(attr.attr).append("_cache = r;\n");
+                        sb.append("                    // continue loop\n");
+                        sb.append("                } else {\n");
+                        sb.append("                    break;\n");
+                        sb.append("                }\n");
+                        sb.append("            }\n");
+                        sb.append("            // Reset to 'iterating' for the next step (clears the 3-marker if it was set)\n");
+                        sb.append("            zzattr_").append(attr.attr).append("_state = 1;\n");
+                        sb.append("        }\n");
+                        sb.append("        zzattr_").append(attr.attr).append("_state = 2;\n");
+                        sb.append("        return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    }\n");
                     }
                 } else {
-                    sb.append("    /** " + attr.comment + "*/\n");
-                    sb.append("    public " + attr.returns + " " + attr.attr + "(" + printParams(attr.parameters) + ") {\n");
+                    // ---------- PARAMETERIZED (NON-CACHED) ATTRIBUTE ----------
+                    sb.append("    /** ").append(attr.comment).append("*/\n");
+                    sb.append("    public ").append(attr.returns).append(" ").append(attr.attr)
+                            .append("(").append(printParams(attr.parameters)).append(") {\n");
                     if (attr.returns.equals("void")) {
-                        sb.append("        " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this" + printArgs(attr.parameters) + ");\n");
+                        sb.append("        ").append(attr.implementedBy).append("((")
+                                .append(c.getName(typePrefix)).append(")this")
+                                .append(printArgs(attr.parameters)).append(");\n");
                     } else {
-                        sb.append("        return " + attr.implementedBy + "((" + c.getName(typePrefix) + ")this" + printArgs(attr.parameters) + ");\n");
+                        sb.append("        return ").append(attr.implementedBy).append("((")
+                                .append(c.getName(typePrefix)).append(")this")
+                                .append(printArgs(attr.parameters)).append(");\n");
                     }
                     sb.append("    }\n");
                 }
-                // if you wonder why 'this' is upcasted to the interface type:
-                // this is to avoid a problem when using eclipses quickfixes
             }
         }
     }
+
 
     private String printArgs(List<Parameter> parameters2) {
         StringBuilder result = new StringBuilder();
@@ -658,8 +682,9 @@ public class Generator {
         // first do a normal copy
         sb.append("        " + c.getName(typePrefix) + " res = copy();\n");
         // then fix up all references using a visitor:
-        Collection<AstEntityDefinition> childTypes = transientChildTypes.get(c);
-        childTypes.remove(null);
+        Collection<AstEntityDefinition> childTypesRaw = transientChildTypes.get(c);
+        List<AstEntityDefinition> childTypes = new ArrayList<>();
+        for (AstEntityDefinition x : childTypesRaw) if (x != null) childTypes.add(x);
         List<ConstructorDef> childTypesWithRefs = new ArrayList<>();
         for (AstEntityDefinition childType : childTypes) {
             if (childType instanceof ConstructorDef) {
@@ -946,7 +971,7 @@ public class Generator {
         for (ListDef l : prog.listDefs) {
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(" + printType(l.itemType) + " ... elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
-            sb.append("        l.addAll(Arrays.asList(elements));\n");
+            sb.append("        for (var e : elements) l.add(e);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
 
