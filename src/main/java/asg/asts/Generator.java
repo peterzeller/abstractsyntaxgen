@@ -180,7 +180,7 @@ public class Generator {
             }
         }
 
-        transientSubTypes  = transientClosure(directSubTypes);
+        transientSubTypes = transientClosure(directSubTypes);
         transientSuperTypes = transientClosure(directSuperTypes);
     }
 
@@ -266,8 +266,9 @@ public class Generator {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
         addSuppressWarningAnnotations(sb);
-        sb.append("final class " + c.getName(typePrefix) + "Impl implements ");
-        sb.append(c.getName(typePrefix) + "{\n");
+        sb.append("final class ").append(c.getName(typePrefix)).append("Impl implements ")
+        .append(c.getName(typePrefix)).append("{\n");
+
 
         // create constructor
         createConstructor(c, sb);
@@ -855,8 +856,7 @@ public class Generator {
     private void generateBaseClass_Interface(ConstructorDef c) {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
-
-        sb.append("public sealed interface ").append(c.getName(typePrefix)).append(" extends ");
+        sb.append("public non-sealed interface ").append(c.getName(typePrefix)).append(" extends ");
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
             if (!first) sb.append(", ");
@@ -864,9 +864,6 @@ public class Generator {
             first = false;
         }
         sb.append(" {\n");
-
-        // permits only its Impl
-        sb.append("    permits ").append(c.getName(typePrefix)).append("Impl;\n\n");
 
         for (Parameter p : c.parameters) {
             sb.append("    void set").append(toFirstUpper(p.name)).append("(").append(printType(p.getTyp())).append(" ").append(p.name).append(");\n");
@@ -995,41 +992,56 @@ public class Generator {
     }
 
     private void generateInterfaceType(CaseDef c) {
-        if (c == commonSuperType) return;
-
+        if (c == commonSuperType) {
+            // generated in generateStandardClasses()
+            return;
+        }
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
 
-        sb.append("public sealed interface ").append(c.getName(typePrefix)).append(" extends ");
+        // direct subtypes of this case (interfaces and/or list classes)
+        Collection<AstEntityDefinition> subs = directSubTypes.get(c);
+        boolean hasSubs = !subs.isEmpty();
+
+        // header: sealed if it has alternatives, otherwise non-sealed (since it’s in a sealed hierarchy)
+        sb.append("public ").append(hasSubs ? "sealed " : "non-sealed ").append("interface ")
+                .append(c.getName(typePrefix));
+
+        // extends (super cases)
         boolean first = true;
+        sb.append(" extends ");
         for (AstEntityDefinition supertype : directSuperTypes.get(c)) {
-            if (supertype == null) continue; // defensive
             if (!first) sb.append(", ");
             sb.append(supertype.getName(typePrefix));
             first = false;
         }
+        if (first) {
+            // no explicit super-cases -> extend the common super element type for convenience
+            sb.append(getCommonSupertypeType());
+        }
+
+        // permits (ONLY in header)
+        if (hasSubs) {
+            sb.append(" permits ");
+            first = true;
+            for (AstEntityDefinition sub : subs) {
+                if (!first) sb.append(", ");
+                // note: this is the TYPE name (interface/class), NOT the Impl class
+                sb.append(sub.getName(typePrefix));
+                first = false;
+            }
+        }
         sb.append(" {\n");
 
-        // permits: its Impl + its direct sub-interfaces (if any)
-        List<String> permits = new ArrayList<>();
-        permits.add(c.getName(typePrefix) + "Impl");
-        for (AstEntityDefinition sub : directSubTypes.get(c)) {
-            permits.add(sub.getName(typePrefix));
-        }
-        sb.append("    permits ").append(String.join(", ", permits)).append(";\n\n");
-
-        // calculate common attributes:
+        // common attributes/fields stubs
         Set<Parameter> attributes = calculateAttributes(c);
-
         for (Parameter p : attributes) {
             sb.append("    void set").append(toFirstUpper(p.name)).append("(").append(printType(p.getTyp())).append(" ").append(p.name).append(");\n");
             sb.append("    ").append(printType(p.getTyp())).append(" get").append(toFirstUpper(p.name)).append("();\n");
         }
-
         sb.append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n");
 
         generateMatcher(c, sb);
-
         sb.append("    ").append(printType(c.getName())).append(" copy();\n");
         sb.append("    ").append(printType(c.getName())).append(" copyWithRefs();\n");
 
@@ -1113,7 +1125,9 @@ public class Generator {
         printProlog(sb);
 
         addSuppressWarningAnnotations(sb);
-        sb.append("final class " + l.getName(typePrefix) + "Impl extends " + l.getName(typePrefix) + " {\n ");
+        sb.append("final class ").append(l.getName(typePrefix)).append("Impl extends ")
+                .append(l.getName(typePrefix)).append(" {\n ");
+
 
         createGetSetParentMethods(sb);
 
@@ -1183,8 +1197,10 @@ public class Generator {
         printProlog(sb);
         addSuppressWarningAnnotations(sb);
 
-        sb.append("public sealed abstract class ").append(l.getName(typePrefix))
+        sb.append("public non-sealed abstract class ")
+                .append(l.getName(typePrefix))
                 .append(" extends AsgList<").append(printType(l.itemType)).append("> implements ");
+
         boolean first = true;
         for (AstEntityDefinition supertype : directSuperTypes.get(l)) {
             if (!first) sb.append(", ");
@@ -1192,9 +1208,6 @@ public class Generator {
             first = false;
         }
         sb.append(" {\n");
-
-        // permits its Impl
-        sb.append("    permits ").append(l.getName(typePrefix)).append("Impl;\n\n");
 
         sb.append("    public ").append(l.getName(typePrefix)).append(" copy() {\n");
         sb.append("        ").append(l.getName(typePrefix)).append(" result = new ").append(l.getName(typePrefix)).append("Impl();\n");
@@ -1227,24 +1240,24 @@ public class Generator {
         StringBuilder sb = new StringBuilder();
         printProlog(sb);
 
-        // --- sealed root + permits ---
-        List<String> permits = new ArrayList<>();
-        // 1) All case interfaces (except the synthetic root case)
-        for (CaseDef d : prog.caseDefs) {
-            if (d != commonSuperType) permits.add(d.getName(typePrefix));
-        }
-        // 2) All constructor interfaces (they directly extend/implement the root)
-        for (ConstructorDef d : prog.constructorDefs) {
-            permits.add(d.getName(typePrefix));
-        }
-        // 3) All list abstract classes (they also directly implement the root)
-        for (ListDef d : prog.listDefs) {
-            permits.add(d.getName(typePrefix));
-        }
+        // Seal the common super element and permit all direct children
+        Collection<AstEntityDefinition> subs = directSubTypes.get(commonSuperType);
 
-        sb.append("public sealed interface ").append(getCommonSupertypeType())
-                .append(" permits ").append(String.join(", ", permits)).append(" {\n")
-                .append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n")
+        sb.append("public sealed interface ").append(getCommonSupertypeType());
+
+        // no extends list for the root
+        if (!subs.isEmpty()) {
+            sb.append(" permits ");
+            boolean first = true;
+            for (AstEntityDefinition sub : subs) {
+                if (!first) sb.append(", ");
+                sb.append(sub.getName(typePrefix));
+                first = false;
+            }
+        }
+        sb.append(" {\n");
+
+        sb.append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n")
                 .append("    ").append(getCommonSupertypeType()).append(" copy();\n")
                 .append("    ").append(getCommonSupertypeType()).append(" copyWithRefs();\n")
                 .append("    int size();\n")
