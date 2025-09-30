@@ -1,0 +1,43 @@
+package test.refs
+
+typeprefix: TR
+
+abstract syntax:
+
+Module(FunctionList functions, ClassDefList classes)
+
+FunctionList * FunctionDef
+ClassDefList * ClassDef
+
+FunctionDef(String name, ParameterList params, TypeRef returnType, StatementList body)
+ClassDef(String name, FieldList fields, MethodList methods)
+
+ParameterList * Parameter
+FieldList * Field
+MethodList * Method
+StatementList * Statement
+
+Parameter(TypeRef paramType, String name)
+Field(TypeRef fieldType, String name)
+Method(String name, ParameterList params, TypeRef returnType, StatementList body)
+
+Statement =
+    VarDecl(TypeRef varType, String name, Expr initializer)
+  | Assignment(ref VarDecl target, Expr value)
+  | FunctionCall(ref FunctionDef func, ExprList args)
+  | ReturnStmt(Expr value)
+
+Expr =
+    VarAccess(ref VarDecl variable)
+  | IntLiteral(int intValue)
+  | BoolLiteral(boolean boolValue)
+  | BinaryExpr(Expr left, Operator operator, Expr right)
+
+Operator =
+    Plus()
+  | Equals()
+
+ExprList * Expr
+TypeRef = SimpleType(String typeName)
+
+attributes:

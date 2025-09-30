@@ -1,0 +1,29 @@
+package test.stmt
+
+typeprefix: TS
+
+abstract syntax:
+
+Program(StatementList statements)
+
+StatementList * Statement
+
+Statement =
+    Assignment(String varName, Expr value)
+  | IfStatement(Expr condition, StatementList thenBranch, StatementList elseBranch)
+  | WhileLoop(Expr condition, StatementList body)
+  | Block(StatementList statements)
+  | ExprStatement(Expr expression)
+
+Expr =
+    BinaryExpr(Expr left, Operator operator, Expr right)
+  | VarRef(String name)
+  | IntLiteral(int intValue)
+  | BoolLiteral(boolean boolValue)
+
+Operator =
+    Plus()
+  | Equals()
+  | Less()
+
+attributes:

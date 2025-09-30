@@ -255,7 +255,7 @@ public class Generator {
                 Parameter oldP = parameters.put(p.name, p);
                 if (oldP != null) {
                     if (!oldP.getTyp().equals(p.getTyp())) {
-                        throw new Error("The property " + p.name + " has not the same type for each element: " + oldP.getTyp() + " and " + p.getTyp());
+                        throw new Error("The property <" + p.name + "> has not the same type for each element: " + oldP.getTyp() + " and " + p.getTyp());
                     }
                 }
             }
@@ -502,7 +502,7 @@ public class Generator {
         }
         sb.append(") {\n");
         for (Parameter p : c.parameters) {
-            if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
+            if (!JavaTypes.primitiveTypes.contains(p.getTyp()) && !p.isRef) {
                 // add null checks for non primitive types:
                 sb.append("        if (" + p.name + " == null)\n");
                 sb.append("            throw new IllegalArgumentException(\"Element " + p.name + " must not be null.\");\n");
@@ -555,7 +555,7 @@ public class Generator {
         sb.append("    public " + getNullableAnnotation() + getCommonSupertypeType() + " getParent() { return parent; }\n");
         sb.append("    public void setParent(" + getNullableAnnotation() + getCommonSupertypeType() + " parent) {\n" +
                 "        if (parent != null && this.parent != null) {\n" +
-                "            throw new Error(\"Cannot change parent of element \" + this.getClass().getSimpleName() + \", as it is already used in another tree.\"\n" +
+                "            throw new Error(\"Cannot change parent of element \" + this.getClass().getSimpleName() + \", as it is already used in another tree. \"\n" +
                 "                + \"Use the copy method to create a new tree or remove the tree from its old parent or set the parent to null before moving the tree. \");\n" +
                 "        }\n" +
                 "        this.parent = parent;\n" +
@@ -596,7 +596,7 @@ public class Generator {
             sb.append("    private " + printType(p.getTyp()) + " " + p.name + ";\n");
             // setter:
             sb.append("    public void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ") {\n");
-            if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
+            if (!JavaTypes.primitiveTypes.contains(p.getTyp()) && !p.isRef) {
                 // add null checks for non primitive types:
                 sb.append("        if (" + p.name + " == null) throw new IllegalArgumentException();\n");
                 if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
@@ -724,7 +724,7 @@ public class Generator {
                         sb.append("                        elem = elem.getParent();\n");
                         sb.append("                    }\n");
                         sb.append("                    if (elem == self) {\n");
-                        sb.append("                        e.set" + toFirstUpper(param.name) + "((" + param.getTyp() + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
+                        sb.append("                        e.set" + toFirstUpper(param.name) + "((" + printType(param.getTyp()) + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
                         sb.append("                    }\n");
                         sb.append("                }\n");
                     }

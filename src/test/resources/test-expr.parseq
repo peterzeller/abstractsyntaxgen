@@ -1,0 +1,40 @@
+package test.expr
+
+typeprefix: TE
+
+abstract syntax:
+
+Expr =
+    BinaryExpr(Expr left, Operator operator, Expr right)
+  | UnaryExpr(UnaryOperator unaryOp, Expr expr)
+  | VarRef(String name)
+  | IntLiteral(int ivalue)
+  | BoolLiteral(boolean bvalue)
+
+Operator =
+    Plus()
+  | Minus()
+  | Times()
+  | Div()
+  | Equals()
+  | Less()
+
+UnaryOperator =
+    Not()
+  | Negate()
+
+ExprList * Expr
+
+attributes:
+
+Expr.toString()
+    returns String
+    implemented by test.expr.ExprAttributes.toString
+
+Expr.evaluate()
+    returns int
+    implemented by test.expr.ExprAttributes.evaluate
+
+Expr.getVariables()
+    returns java.util.Set<String>
+    implemented by test.expr.ExprAttributes.getVariables

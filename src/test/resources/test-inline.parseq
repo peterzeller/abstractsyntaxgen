@@ -1,0 +1,47 @@
+package test.inline
+
+typeprefix: TI
+
+abstract syntax:
+
+Program(FunctionList functions, StatementList initBlock)
+
+FunctionList * FunctionDef
+StatementList * Statement
+
+FunctionDef(String name, ParameterList params, TypeRef returnType, StatementList body)
+
+ParameterList * Parameter
+Parameter(TypeRef paramType, String name)
+
+Statement =
+    VarDecl(TypeRef varType, String name, Expr initializer)
+  | Assignment(String varName, Expr value)
+  | IfStatement(Expr condition, StatementList body)
+  | ReturnStatement(Expr value)
+  | ExprStatement(Expr expression)
+  | FunctionCall(ref FunctionDef func, ExprList args)
+
+Expr =
+    BinaryExpr(Expr left, Operator operator, Expr right)
+  | FunctionCallExpr(ref FunctionDef func, ExprList args)
+  | VarRef(String name)
+  | IntLiteral(int intValue)
+  | BoolLiteral(boolean boolValue)
+
+Operator =
+    Plus()
+  | Equals()
+
+ExprList * Expr
+TypeRef = SimpleType(String typeName)
+
+attributes:
+
+Expr.hasFunction(String funcName)
+    returns boolean
+    implemented by test.inline.InlineAttributes.hasFunction
+
+Statement.hasFunction(String funcName)
+    returns boolean
+    implemented by test.inline.InlineAttributes.hasFunction

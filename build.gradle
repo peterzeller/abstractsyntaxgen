@@ -2,15 +2,18 @@ apply plugin: 'java'
 apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: 'antlr'
-apply plugin:'application'
+apply plugin: 'application'
 
 group = 'com.github.peterzeller'
 version = '0.3.3'
 
 description = """Abstract Syntax Generator"""
 
-
+// Define directories and file patterns
 String genDir = "$projectDir/src-generated"
+def testParseqFiles = fileTree(dir: 'src/test/resources', include: 'test-*.parseq')
+def testGenDir = file("$buildDir/generated/sources/test-ast/java")
+def pkgPattern = ~/package\s+(\S+)\s*;?/
 
 java {
     toolchain {
@@ -26,16 +29,68 @@ sourceSets {
             srcDir genDir
         }
     }
+    test {
+        java {
+            srcDirs += testGenDir
+        }
+    }
 }
 
 repositories {
     mavenCentral()
 }
+
 dependencies {
     antlr "org.antlr:antlr4:4.13.1"
     implementation 'com.google.guava:guava:33.5.0-jre'
+    // Add JUnit 5
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testImplementation 'org.junit.platform:junit-platform-launcher:1.13.4'
 }
 
+// Test AST generation task
+tasks.register('generateTestAsts') {
+    description = 'Generate AST classes for test cases'
+    group = 'build'
+
+    dependsOn 'compileJava'
+
+    inputs.files(testParseqFiles)
+    outputs.dir(testGenDir)
+
+    doFirst {
+        // Clean the test generation directory before generating
+        delete testGenDir
+        testGenDir.mkdirs()
+    }
+
+    doLast {
+        ExecOperations execOps = project.services.get(ExecOperations)
+        testParseqFiles.files.each { File f ->
+            String contents = f.getText('UTF-8')
+            def m = pkgPattern.matcher(contents)
+            String pkg = m.find() ? m.group(1) : ""
+
+            // Use testGenDir directly, don't append package path
+            // The generator will create the package structure itself
+
+            execOps.javaexec {
+                classpath = sourceSets.main.runtimeClasspath
+                mainClass.set('asg.Main')
+                args(f.absolutePath, testGenDir.absolutePath)
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    dependsOn 'generateTestAsts'
+}
+
+compileTestJava {
+    dependsOn 'generateTestAsts'
+}
 
 generateGrammarSource {
     outputDirectory = file(genDir)
@@ -43,8 +98,8 @@ generateGrammarSource {
 
 clean.doFirst {
     delete genDir
+    delete testGenDir
 }
-
 
 tasks.register('javadocJar', Jar) {
     dependsOn javadoc
@@ -66,7 +121,6 @@ artifacts {
     archives sourcesJar
 }
 
-
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -84,4 +138,3 @@ publishing {
 
 // Ensure artifacts are published to mavenLocal() during the build
 build.dependsOn publishToMavenLocal
-
