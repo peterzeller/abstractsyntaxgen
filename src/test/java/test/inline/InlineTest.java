@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static test.inline.TI.*;
+import static test.inline.TestLocalRemoval.programToString;
 
 import java.util.*;
 
@@ -478,5 +479,370 @@ public class InlineTest {
             this.expression = expression;
             this.preStatements = preStatements;
         }
+    }
+
+    @Test
+    public void test_mult3rewrite() {
+        // Reproduce WurstScript test_mult3rewrite scenario:
+        // int ghs = 0
+        // function foo() returns int
+        //    ghs += 2
+        //    return 4 + ghs
+        // init
+        //    let blub_c = foo() + foo()
+        //    println(I2S(blub_c))
+        //
+        // This tests the interaction between flattening and inlining:
+        // 1. Flatten: foo() + foo() -> temp = foo(); temp + foo()
+        // 2. Inline: Replace foo() calls with inlined bodies
+        // 3. Result should be correct regardless of optimization level
+
+        var i2sFunc = FunctionDef("I2S",
+                ParameterList(Parameter(SimpleType("int"), "i")),
+                SimpleType("string"),
+                StatementList() // Native function
+        );
+
+        var printlnFunc = FunctionDef("println",
+                ParameterList(Parameter(SimpleType("string"), "s")),
+                SimpleType("void"),
+                StatementList() // Native function
+        );
+
+        var fooFunc = FunctionDef("foo",
+                ParameterList(), // No parameters
+                SimpleType("int"),
+                StatementList(
+                        // ghs += 2 (equivalent to ghs = ghs + 2)
+                        Assignment("ghs", BinaryExpr(VarRef("ghs"), Plus(), IntLiteral(2))),
+                        // return 4 + ghs
+                        ReturnStatement(BinaryExpr(IntLiteral(4), Plus(), VarRef("ghs")))
+                )
+        );
+
+        var program = Program(
+                FunctionList(i2sFunc, printlnFunc, fooFunc),
+                StatementList(
+                        // int ghs = 0
+                        VarDecl(SimpleType("int"), "ghs", IntLiteral(0)),
+                        // let blub_c = foo() + foo()
+                        VarDecl(SimpleType("int"), "blub_c",
+                                BinaryExpr(
+                                        FunctionCallExpr(fooFunc, ExprList()),
+                                        Plus(),
+                                        FunctionCallExpr(fooFunc, ExprList())
+                                )
+                        ),
+                        // println(I2S(blub_c))
+                        ExprStatement(
+                                FunctionCallExpr(printlnFunc,
+                                        ExprList(
+                                                FunctionCallExpr(i2sFunc, ExprList(VarRef("blub_c")))
+                                        )
+                                )
+                        )
+                )
+        );
+
+        System.out.println("ORIGINAL PROGRAM (test_mult3rewrite):");
+        test.inline.InlinePrinter.print(program);
+
+        // Test 1: Flatten only (no inlining) - should preserve foo() calls but make order explicit
+        var flattened = flattenExpressions(program);
+
+        System.out.println("\nAFTER FLATTENING ONLY:");
+        test.inline.InlinePrinter.print(flattened);
+
+        // Test 2: Flatten + Inline - should have no foo() calls
+        var flattenedAndInlined = inlineFunction(flattened, "foo");
+
+        System.out.println("\nAFTER FLATTENING + INLINING:");
+        test.inline.InlinePrinter.print(flattenedAndInlined);
+
+        System.out.println("\nExpected behavior:");
+        System.out.println("1. Flattened only: should contain 'foo()' calls but in explicit order");
+        System.out.println("2. Flattened + Inlined: should contain NO 'foo()' calls");
+        System.out.println();
+
+        // Assertions for flattened version (should still contain foo() calls)
+        String flattenedStr = programToString(flattened);
+        assertTrue(flattenedStr.contains("foo"),
+                "Flattened version should still contain foo() calls");
+
+        // Should have temp variable for the first foo() call
+        assertEquals(4, flattened.getInitBlock().size()); // ghs, temp, blub_c, println
+
+        // Check that we have a temp variable
+        var tempStmt = (TIVarDecl) flattened.getInitBlock().get(1);
+        assertTrue(tempStmt.getName().startsWith("temp") || tempStmt.getName().startsWith("flatten"),
+                "Should have a temporary variable for flattening");
+
+        // Assertions for flattened + inlined version (should NOT contain foo() calls)
+        String inlinedStr = programToString(flattenedAndInlined);
+        assertFalse(inlinedStr.contains("foo"),
+                "Inlined version should NOT contain foo() calls");
+
+        // Should have foo function removed
+        assertEquals(2, flattenedAndInlined.getFunctions().size()); // Only I2S and println
+
+        // Verify semantic correctness by simulating execution
+        int expectedResult = simulateExecution(program);
+        int flattenedResult = simulateExecution(flattened);
+        int inlinedResult = simulateExecution(flattenedAndInlined);
+
+        System.out.println("Execution results:");
+        System.out.println("  Original: " + expectedResult);
+        System.out.println("  Flattened: " + flattenedResult);
+        System.out.println("  Inlined: " + inlinedResult);
+
+        assertEquals(expectedResult, flattenedResult,
+                "Flattening should preserve semantics");
+        assertEquals(expectedResult, inlinedResult,
+                "Inlining should preserve semantics");
+
+        System.out.println("✅ test_mult3rewrite passed - flattening and inlining work correctly!");
+    }
+
+    @Test
+    public void test_flattenWithShortCircuit() {
+        // Test flattening with short-circuit operators where order matters even more
+
+        var isZeroFunc = FunctionDef("isZero",
+                ParameterList(Parameter(SimpleType("int"), "x")),
+                SimpleType("boolean"),
+                StatementList(
+                        Assignment("callCount", BinaryExpr(VarRef("callCount"), Plus(), IntLiteral(1))),
+                        ReturnStatement(BinaryExpr(VarRef("x"), Equals(), IntLiteral(0)))
+                )
+        );
+
+        var program = Program(
+                FunctionList(isZeroFunc),
+                StatementList(
+                        VarDecl(SimpleType("int"), "callCount", IntLiteral(0)),
+                        // This would be problematic without flattening in a short-circuit context
+                        VarDecl(SimpleType("boolean"), "result",
+                                BinaryExpr(
+                                        FunctionCallExpr(isZeroFunc, ExprList(IntLiteral(0))), // true
+                                        Plus(), // Using Plus instead of logical AND for simplicity
+                                        FunctionCallExpr(isZeroFunc, ExprList(IntLiteral(1)))  // false
+                                )
+                        )
+                )
+        );
+
+        System.out.println("BEFORE FLATTENING (Short Circuit Test):");
+        test.inline.InlinePrinter.print(program);
+
+        var flattened = flattenExpressions(program);
+
+        System.out.println("\nAFTER FLATTENING (Short Circuit Test):");
+        test.inline.InlinePrinter.print(flattened);
+
+        // Should have explicit ordering
+        assertTrue(flattened.getInitBlock().size() > program.getInitBlock().size(),
+                "Flattening should create additional statements for explicit ordering");
+
+        System.out.println("✅ test_flattenWithShortCircuit passed!");
+    }
+
+    // Implementation of expression flattening
+    private TIProgram flattenExpressions(TIProgram program) {
+        var newInitBlock = StatementList();
+        var tempVarCounter = 0;
+
+        for (TIStatement stmt : program.getInitBlock()) {
+            var flattenResult = flattenStatement(stmt, tempVarCounter);
+            newInitBlock.addAll(flattenResult.preStatements);
+            tempVarCounter = flattenResult.nextTempCounter;
+        }
+
+        return Program(program.getFunctions().copy(), newInitBlock);
+    }
+
+    private FlattenResult flattenStatement(TIStatement stmt, int tempVarCounter) {
+        var statements = new ArrayList<TIStatement>();
+
+        if (stmt instanceof TIVarDecl) {
+            var varDecl = (TIVarDecl) stmt;
+            var flattenResult = flattenExpression(varDecl.getInitializer(), tempVarCounter);
+
+            statements.addAll(flattenResult.preStatements);
+            statements.add(VarDecl(varDecl.getVarType().copy(), varDecl.getName(), flattenResult.expression));
+
+            return new FlattenResult(statements, flattenResult.nextTempCounter);
+        } else if (stmt instanceof TIExprStatement) {
+            var exprStmt = (TIExprStatement) stmt;
+            var flattenResult = flattenExpression(exprStmt.getExpression(), tempVarCounter);
+
+            statements.addAll(flattenResult.preStatements);
+            statements.add(ExprStatement(flattenResult.expression));
+
+            return new FlattenResult(statements, flattenResult.nextTempCounter);
+        }
+
+        // For other statement types, just copy
+        statements.add(stmt.copy());
+        return new FlattenResult(statements, tempVarCounter);
+    }
+
+    private FlattenResult flattenExpression(TIExpr expr, int tempVarCounter) {
+        if (expr instanceof TIBinaryExpr) {
+            var binaryExpr = (TIBinaryExpr) expr;
+
+            // Check if both sides have function calls that could have side effects
+            boolean leftHasFunctionCall = hasFunctionCall(binaryExpr.getLeft());
+            boolean rightHasFunctionCall = hasFunctionCall(binaryExpr.getRight());
+
+            if (leftHasFunctionCall && rightHasFunctionCall) {
+                // Both sides have function calls - need to flatten
+                System.out.println("Flattening binary expression with function calls on both sides");
+
+                var preStatements = new ArrayList<TIStatement>();
+
+                // Flatten left side and create temp variable
+                var leftFlatten = flattenExpression(binaryExpr.getLeft(), tempVarCounter);
+                preStatements.addAll(leftFlatten.preStatements);
+
+                String tempName = "flattenTemp" + leftFlatten.nextTempCounter;
+                preStatements.add(VarDecl(SimpleType("int"), tempName, leftFlatten.expression));
+
+                // Flatten right side
+                var rightFlatten = flattenExpression(binaryExpr.getRight(), leftFlatten.nextTempCounter + 1);
+                preStatements.addAll(rightFlatten.preStatements);
+
+                // Create new binary expression with temp variable
+                var newExpr = BinaryExpr(
+                        VarRef(tempName),
+                        binaryExpr.getOperator().copy(),
+                        rightFlatten.expression
+                );
+
+                return new FlattenResult(newExpr, preStatements, rightFlatten.nextTempCounter);
+            } else {
+                // Regular case - flatten recursively
+                var leftFlatten = flattenExpression(binaryExpr.getLeft(), tempVarCounter);
+                var rightFlatten = flattenExpression(binaryExpr.getRight(), leftFlatten.nextTempCounter);
+
+                var preStatements = new ArrayList<TIStatement>();
+                preStatements.addAll(leftFlatten.preStatements);
+                preStatements.addAll(rightFlatten.preStatements);
+
+                var newExpr = BinaryExpr(
+                        leftFlatten.expression,
+                        binaryExpr.getOperator().copy(),
+                        rightFlatten.expression
+                );
+
+                return new FlattenResult(newExpr, preStatements, rightFlatten.nextTempCounter);
+            }
+        } else if (expr instanceof TIFunctionCallExpr) {
+            var funcCall = (TIFunctionCallExpr) expr;
+
+            // Flatten arguments
+            var preStatements = new ArrayList<TIStatement>();
+            var newArgs = ExprList();
+            int currentTempCounter = tempVarCounter;
+
+            for (TIExpr arg : funcCall.getArgs()) {
+                var argFlatten = flattenExpression(arg, currentTempCounter);
+                preStatements.addAll(argFlatten.preStatements);
+                newArgs.add(argFlatten.expression);
+                currentTempCounter = argFlatten.nextTempCounter;
+            }
+
+            return new FlattenResult(
+                    FunctionCallExpr(funcCall.getFunc(), newArgs),
+                    preStatements,
+                    currentTempCounter
+            );
+        }
+
+        // For other expressions, no flattening needed
+        return new FlattenResult(expr.copy(), new ArrayList<>(), tempVarCounter);
+    }
+
+    private boolean hasFunctionCall(TIExpr expr) {
+        if (expr instanceof TIFunctionCallExpr) {
+            return true;
+        } else if (expr instanceof TIBinaryExpr) {
+            var binaryExpr = (TIBinaryExpr) expr;
+            return hasFunctionCall(binaryExpr.getLeft()) || hasFunctionCall(binaryExpr.getRight());
+        }
+        return false;
+    }
+
+    // Helper class for flattening results
+    private static class FlattenResult {
+        final TIExpr expression;
+        final List<TIStatement> preStatements;
+        final int nextTempCounter;
+
+        FlattenResult(TIExpr expression, List<TIStatement> preStatements, int nextTempCounter) {
+            this.expression = expression;
+            this.preStatements = preStatements;
+            this.nextTempCounter = nextTempCounter;
+        }
+
+        FlattenResult(List<TIStatement> statements, int nextTempCounter) {
+            this.expression = null;
+            this.preStatements = statements;
+            this.nextTempCounter = nextTempCounter;
+        }
+    }
+
+    // Simulate execution to verify semantic correctness
+    private int simulateExecution(TIProgram program) {
+        var state = new HashMap<String, Integer>();
+
+        // Initialize variables and execute statements
+        for (TIStatement stmt : program.getInitBlock()) {
+            executeStatement(stmt, state, program);
+        }
+
+        // Return the value of blub_c (the main result)
+        return state.getOrDefault("blub_c", 0);
+    }
+
+    private void executeStatement(TIStatement stmt, Map<String, Integer> state, TIProgram program) {
+        if (stmt instanceof TIVarDecl) {
+            var varDecl = (TIVarDecl) stmt;
+            int value = evaluateExpression(varDecl.getInitializer(), state, program);
+            state.put(varDecl.getName(), value);
+        } else if (stmt instanceof TIAssignment) {
+            var assignment = (TIAssignment) stmt;
+            int value = evaluateExpression(assignment.getValue(), state, program);
+            state.put(assignment.getVarName(), value);
+        }
+        // For other statement types, we don't need to simulate them for this test
+    }
+
+    private int evaluateExpression(TIExpr expr, Map<String, Integer> state, TIProgram program) {
+        if (expr instanceof TIIntLiteral) {
+            return ((TIIntLiteral) expr).getIntValue();
+        } else if (expr instanceof TIVarRef) {
+            var varRef = (TIVarRef) expr;
+            return state.getOrDefault(varRef.getName(), 0);
+        } else if (expr instanceof TIBinaryExpr) {
+            var binaryExpr = (TIBinaryExpr) expr;
+            int left = evaluateExpression(binaryExpr.getLeft(), state, program);
+            int right = evaluateExpression(binaryExpr.getRight(), state, program);
+
+            if (binaryExpr.getOperator() instanceof TIPlus) {
+                return left + right;
+            }
+            // Add other operators as needed
+        } else if (expr instanceof TIFunctionCallExpr) {
+            var funcCall = (TIFunctionCallExpr) expr;
+            if (funcCall.getFunc().getName().equals("foo")) {
+                // Simulate foo() execution: ghs += 2; return 4 + ghs
+                int currentGhs = state.getOrDefault("ghs", 0);
+                int newGhs = currentGhs + 2;
+                state.put("ghs", newGhs);
+                return 4 + newGhs;
+            }
+        }
+
+        return 0; // Default value
     }
 }

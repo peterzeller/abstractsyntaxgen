@@ -3,9 +3,10 @@ apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: 'antlr'
 apply plugin: 'application'
+apply plugin: 'jacoco'
 
 group = 'com.github.peterzeller'
-version = '0.3.3'
+version = '0.9.0'
 
 description = """Abstract Syntax Generator"""
 
@@ -83,19 +84,74 @@ tasks.register('generateTestAsts') {
     }
 }
 
+// JaCoCo configuration
+jacoco {
+    toolVersion = "0.8.8"
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+
+    executionData fileTree(dir: "$buildDir/jacoco", include: "**/*.exec")
+
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                    // Exclude generated ANTLR files
+                    '**/parser/**',
+                    '**/lexer/**',
+                    // Exclude generated AST test files
+                    '**/test/expr/**',
+                    '**/test/stmt/**',
+                    '**/test/refs/**',
+                    '**/test/inline/**'
+            ])
+        }))
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.70 // 70% minimum coverage
+            }
+        }
+    }
+}
+
 test {
     useJUnitPlatform()
     dependsOn 'generateTestAsts'
 
+    // Force test output to be shown
     testLogging {
         events "passed", "skipped", "failed", "standardOut", "standardError"
         exceptionFormat "full"
-        showStandardStreams = true
+        showStandardStreams = false // Set to true for debugging
         showCauses true
         showExceptions true
         showStackTraces true
     }
+
+    // Show summary
+    afterSuite { desc, result ->
+        if (!desc.parent) {
+            println "Test Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} passed, ${result.failedTestCount} failed, ${result.skippedTestCount} skipped)"
+        }
+    }
+
+    finalizedBy jacocoTestReport
 }
+
+// Make check depend on jacoco
+check.dependsOn jacocoTestCoverageVerification
+
 
 compileTestJava {
     dependsOn 'generateTestAsts'
