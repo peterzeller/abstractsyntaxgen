@@ -28,29 +28,9 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build
 
-      - name: Run tests with coverage
-        run: ./gradlew test jacocoTestReport
-
-      - name: Log coverage percentage
-        run: |
-          echo "coverage = ${{ steps.jacoco.outputs.coverage }}"
-          echo "branch coverage = ${{ steps.jacoco.outputs.branches }}"
-
-      - name: Upload JaCoCo coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./build/reports/jacoco/test/jacocoTestReport.xml
-
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
           path: build/reports/tests/
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-reports
-          path: build/reports/jacoco/
