@@ -30,3 +30,4 @@ hs_err_pid*
 .synctex.gz
 .toc
 /out
+/bin
