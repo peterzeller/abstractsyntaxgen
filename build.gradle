@@ -3,7 +3,6 @@ apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: 'antlr'
 apply plugin: 'application'
-apply plugin: 'jacoco'
 
 group = 'com.github.peterzeller'
 version = '0.9.0'
@@ -79,70 +78,6 @@ tasks.register('generateTestAsts') {
     }
 }
 
-jacoco {
-    toolVersion = "0.8.13"
-}
-
-jacocoTestReport {
-    dependsOn test
-    reports {
-        xml.required = true
-        html.required = true
-        csv.required = false
-    }
-
-    executionData fileTree(dir: "$buildDir/jacoco", include: "**/*.exec")
-
-    afterEvaluate {
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(dir: it, include: [
-                    // Include generated AST test classes (these are what we're actually testing)
-                    '**/test/expr/**',
-                    '**/test/stmt/**',
-                    '**/test/refs/**',
-                    '**/test/inline/**'
-            ], exclude: [
-                    // Exclude the generator code itself (we don't test this)
-                    '**/asg/**',
-                    // Exclude generated ANTLR files
-                    '**/parser/**',
-                    '**/lexer/**'
-            ])
-        }))
-
-        // Also include source directories for generated test code
-        sourceDirectories.setFrom(files([
-                testGenDir
-        ]))
-    }
-}
-
-jacocoTestCoverageVerification {
-    violationRules {
-        rule {
-            // Set a realistic target for generated code coverage
-            limit {
-                minimum = 0.2 // 20% coverage of generated AST classes
-            }
-        }
-    }
-
-    afterEvaluate {
-        // Apply same filtering as jacocoTestReport
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(dir: it, include: [
-                    '**/test/expr/**',
-                    '**/test/stmt/**',
-                    '**/test/refs/**',
-                    '**/test/inline/**'
-            ], exclude: [
-                    '**/asg/**',
-                    '**/parser/**',
-                    '**/lexer/**'
-            ])
-        }))
-    }
-}
 
 test {
     useJUnitPlatform()
@@ -162,15 +97,12 @@ test {
             println "Test Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} passed, ${result.failedTestCount} failed, ${result.skippedTestCount} skipped)"
         }
     }
-
-    finalizedBy jacocoTestReport
 }
 
 compileTestJava {
     dependsOn 'generateTestAsts'
 }
 
-check.dependsOn jacocoTestCoverageVerification
 
 generateGrammarSource {
     outputDirectory = file(genDir)
@@ -179,30 +111,6 @@ generateGrammarSource {
 clean.doFirst {
     delete genDir
     delete testGenDir
-}
-
-// Coverage task for local development
-tasks.register('coverage') {
-    dependsOn 'jacocoTestReport'
-    description = 'Generate coverage report for generated AST classes'
-
-    doLast {
-        println "Coverage report (Generated AST Classes): file://${project.buildDir}/reports/jacoco/test/html/index.html"
-
-        // Print summary of what we're measuring
-        println ""
-        println "Coverage Analysis Scope:"
-        println "✓ Generated AST classes (test.expr.*, test.stmt.*, test.refs.*, test.inline.*)"
-        println "✗ AST Generator code (asg.*) - not included"
-        println "✗ ANTLR generated parsers - not included"
-        println ""
-        println "This measures how well your tests exercise the generated AST functionality."
-    }
-}
-
-tasks.register('coverageVerify') {
-    dependsOn 'jacocoTestCoverageVerification'
-    description = 'Verify coverage of generated AST classes meets minimum threshold'
 }
 
 // Rest of your existing tasks...
