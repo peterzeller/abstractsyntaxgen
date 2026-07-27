@@ -309,6 +309,7 @@ var copy = program.copyWithRefs(); // Maintains reference integrity
 4. **Use matchers for transformations** - they ensure all cases are handled
 5. **Test mutations thoroughly** - verify parent relationships and semantic correctness
 6. **Use `copyWithRefs()` for reference-heavy trees** - it maintains reference integrity
+7. **Use `Element.IterativeVisitor#traverse` for deeply nested or untrusted trees** - it avoids recursion limits
 
 
 ## Documentation

@@ -123,6 +123,25 @@ public class RefsTest {
     }
 
     @Test
+    public void testCopyWithManyReferencesToLateSibling() {
+        var target = VarDecl(SimpleType("int"), "x", IntLiteral(5));
+        var statements = StatementList();
+        for (int i = 0; i < 4_000; i++) {
+            statements.add(ReturnStmt(VarAccess(target)));
+        }
+        statements.add(target);
+
+        var copy = statements.copyWithRefs();
+        var copiedTarget = (TRVarDecl) copy.get(copy.size() - 1);
+
+        assertNotSame(target, copiedTarget);
+        for (int i : new int[]{0, 1_999, 3_999}) {
+            var access = (TRVarAccess) ((TRReturnStmt) copy.get(i)).getValue();
+            assertSame(copiedTarget, access.getVariable());
+        }
+    }
+
+    @Test
     public void testReferenceIntegrityAfterModification() {
         var varDecl = VarDecl(SimpleType("int"), "x", IntLiteral(5));
         var varAccess = VarAccess(varDecl);

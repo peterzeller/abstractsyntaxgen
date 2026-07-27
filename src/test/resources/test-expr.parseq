@@ -38,3 +38,12 @@ Expr.evaluate()
 Expr.getVariables()
     returns java.util.Set<String>
     implemented by test.expr.ExprAttributes.getVariables
+
+IntLiteral.circularTwice
+    returns boolean
+    implemented by test.expr.ExprAttributes.circularTwice
+    circular test.expr.ExprAttributes.circularInitial
+
+IntLiteral.cachedObject
+    returns Object
+    implemented by test.expr.ExprAttributes.cachedObject

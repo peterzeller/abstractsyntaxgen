@@ -5,6 +5,29 @@ import java.util.*;
 
 public class ExprAttributes {
 
+    private static int circularCalls;
+
+    public static boolean circularInitial() {
+        return false;
+    }
+
+    public static boolean circularTwice(TEIntLiteral literal) {
+        circularCalls++;
+        return literal.circularTwice() | literal.circularTwice();
+    }
+
+    public static Object cachedObject(TEIntLiteral literal) {
+        return new byte[1024];
+    }
+
+    public static void resetCircularCalls() {
+        circularCalls = 0;
+    }
+
+    public static int getCircularCalls() {
+        return circularCalls;
+    }
+
     public static String toString(TEBinaryExpr teBinaryExpr) {
         return null;
     }

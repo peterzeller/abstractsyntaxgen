@@ -96,4 +96,27 @@ public class ExprTest {
         
         assertEquals("addition", result);
     }
+
+    @Test
+    public void testCircularAttributeCanBeReadTwiceDuringOneEvaluation() {
+        ExprAttributes.resetCircularCalls();
+        var literal = IntLiteral(1);
+
+        assertFalse(literal.circularTwice());
+        assertFalse(literal.circularTwice());
+        assertEquals(1, ExprAttributes.getCircularCalls());
+    }
+
+    @Test
+    public void testClearAttributesReleasesReferenceCache() throws Exception {
+        var literal = IntLiteral(1);
+        assertNotNull(literal.cachedObject());
+
+        var cache = literal.getClass().getDeclaredField("zzattr_cachedObject_cache");
+        cache.setAccessible(true);
+        assertNotNull(cache.get(literal));
+
+        literal.clearAttributes();
+        assertNull(cache.get(literal));
+    }
 }

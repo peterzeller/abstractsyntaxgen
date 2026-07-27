@@ -1,7 +1,6 @@
 package asg.asts;
 
 import asg.asts.ast.*;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -272,6 +271,7 @@ public class Generator {
 
         // create constructor
         createConstructor(c, sb);
+        createShallowCopyMethod(c, sb);
 
         // get/set parent method:
         createGetSetParentMethods(sb);
@@ -322,37 +322,7 @@ public class Generator {
 
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
         sb.append("    public boolean structuralEquals(" + getCommonSupertypeType() + " e) {\n");
-
-        if (c.parameters.isEmpty()) {
-            sb.append("        return e instanceof " + c.getName(typePrefix) + ";\n");
-        } else {
-            sb.append("        if (e instanceof " + c.getName(typePrefix) + ") {\n");
-            sb.append("            " + c.getName(typePrefix) + " o = (" + c.getName(typePrefix) + ") e;\n");
-            sb.append("            return ");
-            boolean first = true;
-            for (Parameter p : c.parameters) {
-                if (p.isIgnoreEquality()) {
-                    continue;
-                }
-                if (!first) {
-                    sb.append("\n                && ");
-                }
-                if (prog.hasElement(p.getTyp())) {
-                    if (p.isRef) {
-                        sb.append("this." + p.name + " == o.get" + toFirstUpper(p.name) + "()");
-                    } else {
-                        sb.append("this." + p.name + ".structuralEquals(o.get" + toFirstUpper(p.name) + "())");
-                    }
-                } else {
-                    sb.append("java.util.Objects.equals(" + p.name + ", o.get" + toFirstUpper(p.name) + "())");
-                }
-                first = false;
-            }
-            sb.append(";\n");
-            sb.append("        } else {\n");
-            sb.append("            return false;\n");
-            sb.append("        }\n");
-        }
+        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
         sb.append("    }\n");
     }
 
@@ -408,7 +378,8 @@ public class Generator {
                         sb.append("        if (zzattr_").append(attr.attr).append("_state == 2) {\n");
                         sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("        }\n");
-                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 1) {\n");
+                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 1")
+                                .append(" || zzattr_").append(attr.attr).append("_state == 3) {\n");
                         sb.append("            // Mark that we were queried during iteration\n");
                         sb.append("            zzattr_").append(attr.attr).append("_state = 3;\n");
                         sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
@@ -422,7 +393,8 @@ public class Generator {
                                 .append(c.getName(typePrefix)).append(")this);\n");
                         sb.append("            if (zzattr_").append(attr.attr).append("_state == 3) {\n");
                         sb.append("                // Another access happened during iteration -> keep iterating until stable\n");
-                        sb.append("                if (!java.util.Objects.equals(zzattr_").append(attr.attr).append("_cache, r)) {\n");
+                        sb.append("                if (!(").append(equalityExpression(
+                                "zzattr_" + attr.attr + "_cache", "r", attr.returns)).append(")) {\n");
                         sb.append("                    zzattr_").append(attr.attr).append("_cache = r;\n");
                         sb.append("                    // continue loop\n");
                         sb.append("                } else {\n");
@@ -431,7 +403,8 @@ public class Generator {
                         sb.append("                }\n");
                         sb.append("            } else {\n");
                         sb.append("                // Normal iteration step\n");
-                        sb.append("                if (!java.util.Objects.equals(zzattr_").append(attr.attr).append("_cache, r)) {\n");
+                        sb.append("                if (!(").append(equalityExpression(
+                                "zzattr_" + attr.attr + "_cache", "r", attr.returns)).append(")) {\n");
                         sb.append("                    zzattr_").append(attr.attr).append("_cache = r;\n");
                         sb.append("                    // continue loop\n");
                         sb.append("                } else {\n");
@@ -491,6 +464,9 @@ public class Generator {
     }
 
     private void createConstructor(ConstructorDef c, StringBuilder sb) {
+        if (!c.parameters.isEmpty()) {
+            sb.append("    " + c.getName(typePrefix) + "Impl() {}\n\n");
+        }
         sb.append("    " + c.getName(typePrefix) + "Impl(");
         boolean first = true;
         for (Parameter p : c.parameters) {
@@ -523,11 +499,39 @@ public class Generator {
         sb.append("    }\n\n");
     }
 
+    private void createShallowCopyMethod(ConstructorDef c, StringBuilder sb) {
+        String implType = c.getName(typePrefix) + "Impl";
+        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
+        for (Parameter p : c.parameters) {
+            if (p.isRef || !prog.hasElement(p.getTyp())) {
+                sb.append("        result.").append(p.name).append(" = this.").append(p.name).append(";\n");
+            }
+        }
+        for (FieldDef field : prog.fieldDefs) {
+            if (hasField(c, field)) {
+                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
+                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+            }
+        }
+        sb.append("        return result;\n");
+        sb.append("    }\n\n");
+    }
+
     private String printType(String typ) {
         if (prog.hasElement(typ)) {
             return prog.getElement(typ).getName(typePrefix);
         }
         return typ;
+    }
+
+    private String equalityExpression(String left, String right, String type) {
+        return switch (type) {
+            case "float" -> "java.lang.Float.compare(" + left + ", " + right + ") == 0";
+            case "double" -> "java.lang.Double.compare(" + left + ", " + right + ") == 0";
+            case "byte", "short", "int", "long", "char", "boolean" -> left + " == " + right;
+            default -> "java.util.Objects.equals(" + left + ", " + right + ")";
+        };
     }
 
 
@@ -602,7 +606,7 @@ public class Generator {
                 if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
                     // we have a generated type.
                     // the removed type looses its parent:
-                    sb.append("        this." + p.name + ".setParent(null);\n");
+                    sb.append("        if (this." + p.name + " != null) this." + p.name + ".setParent(null);\n");
                     // the new element has a new parent:
                     sb.append("        " + p.name + ".setParent(this);\n");
                 }
@@ -664,107 +668,29 @@ public class Generator {
     }
 
     private void createCopyMethod(ConstructorDef c, StringBuilder sb) {
-        boolean first;
         sb.append("    @Override public " + c.getName(typePrefix) + " copy() {\n");
-        sb.append("        " + c.getName(typePrefix) + " result = new " + c.getName(typePrefix) + "Impl(");
-        first = true;
-        for (Parameter p : c.parameters) {
-            if (!first) {
-                sb.append(", ");
-            }
-            if (!p.isRef && prog.hasElement(p.getTyp())) {
-                sb.append("(" + printType(p.getTyp()) + ") " + "this." + p.name + ".copy()");
-            } else {
-                sb.append(p.name);
-            }
-            first = false;
-        }
-        sb.append(");\n");
-        for (FieldDef field : prog.fieldDefs) {
-            if (!hasField(c, field)) {
-                continue;
-            }
-            sb.append("result.set" + toFirstUpper(field.getFieldName()) + "(get" + toFirstUpper(field.getFieldName()) + "());\n");
-
-        }
-        sb.append("        return result;\n");
+        sb.append("        return (").append(c.getName(typePrefix)).append(") ")
+                .append(getTreeUtilType()).append(".copy(this, false);\n");
         sb.append("    }\n\n");
     }
 
     private void createCopyWithRefsMethod(AstBaseTypeDefinition c, StringBuilder sb) {
         sb.append("    @Override public " + c.getName(typePrefix) + " copyWithRefs() {\n");
-        // first do a normal copy
-        sb.append("        " + c.getName(typePrefix) + " res = copy();\n");
-        // then fix up all references using a visitor:
-        Collection<AstEntityDefinition> childTypesRaw = transientChildTypes.get(c);
-        List<AstEntityDefinition> childTypes = new ArrayList<>();
-        for (AstEntityDefinition x : childTypesRaw) if (x != null) childTypes.add(x);
-        List<ConstructorDef> childTypesWithRefs = new ArrayList<>();
-        for (AstEntityDefinition childType : childTypes) {
-            if (childType instanceof ConstructorDef) {
-                ConstructorDef constructorChild = (ConstructorDef) childType;
-                if (constructorChild.parameters.stream().anyMatch(p -> p.isRef
-                        && containsType(childTypes, p.getTyp()))) {
-                    childTypesWithRefs.add(constructorChild);
-                }
-            }
-        }
-        if (!childTypesWithRefs.isEmpty()) {
-            sb.append("        " + getCommonSupertypeType() + " self = this;\n");
-            sb.append("        res.accept(new " + getCommonSupertypeType() + ".DefaultVisitor() {\n");
-            for (ConstructorDef cc : childTypesWithRefs) {
-                sb.append("            @Override public void visit(" + cc.getName(typePrefix) + " e) {\n");
-                sb.append("                super.visit(e);\n");
-                for (Parameter param : cc.parameters) {
-                    if (param.isRef && containsType(childTypes, param.getTyp())) {
-                        sb.append("                // check reference " + param.name + "\n");
-                        sb.append("                {\n");
-                        sb.append("                    " + getCommonSupertypeType() + " elem = e.get" + toFirstUpper(param.name) + "();\n");
-                        sb.append("                    while (elem != self && elem != null) {\n");
-                        sb.append("                        elem = elem.getParent();\n");
-                        sb.append("                    }\n");
-                        sb.append("                    if (elem == self) {\n");
-                        sb.append("                        e.set" + toFirstUpper(param.name) + "((" + printType(param.getTyp()) + ") res.followPath(self.pathTo(e.get" + toFirstUpper(param.name) + "())));\n");
-                        sb.append("                    }\n");
-                        sb.append("                }\n");
-                    }
-                }
-                sb.append("            }\n");
-            }
-            sb.append("        });\n");
-        }
-        sb.append("        return res;\n");
+        sb.append("        return (").append(c.getName(typePrefix)).append(") ")
+                .append(getTreeUtilType()).append(".copy(this, true);\n");
         sb.append("    }\n\n");
     }
 
-    private boolean containsType(Collection<AstEntityDefinition> childTypes, String typeName) {
-        Preconditions.checkNotNull(typeName);
-        return childTypes.stream()
-                .anyMatch(ct -> {
-                    Preconditions.checkNotNull(ct);
-                    return ct.getName("").equals(typeName);
-                });
-    }
-
-
     private void createClearMethod(ConstructorDef c, StringBuilder sb) {
-        // recursive clearAttribute
-        sb.append("    @Override public void clearAttributes() {\n");
-        for (Parameter p : c.parameters) {
-            if (!p.isRef && prog.hasElement(p.getTyp())) {
-                sb.append("        " + p.name + ".clearAttributes();\n");
-            }
-        }
-        sb.append("        clearAttributesLocal();\n");
-        sb.append("    }\n");
-
-
         // local clear attributes:
         sb.append("    @Override public void clearAttributesLocal() {\n");
         for (AttributeDef attr : prog.attrDefs) {
             if (hasAttribute(c, attr)) {
                 if (attr.parameters == null) {
                     sb.append("        zzattr_" + attr.attr + "_state = 0;\n");
+                    if (!JavaTypes.primitiveTypes.contains(attr.returns)) {
+                        sb.append("        zzattr_" + attr.attr + "_cache = null;\n");
+                    }
                 }
             }
         }
@@ -773,19 +699,15 @@ public class Generator {
     }
 
     private void createClearMethod(ListDef c, StringBuilder sb) {
-        // Recursive clear
-        sb.append("    @Override public void clearAttributes() {\n");
-        sb.append("        for (" + printType(c.itemType) + " child : this) {\n");
-        sb.append("            child.clearAttributes();\n");
-        sb.append("        }\n");
-        sb.append("        clearAttributesLocal();\n");
-        sb.append("    }\n");
         // local clear
         sb.append("    @Override public void clearAttributesLocal() {\n");
         for (AttributeDef attr : prog.attrDefs) {
             if (hasAttribute(c, attr)) {
                 if (attr.parameters == null) {
                     sb.append("        zzattr_" + attr.attr + "_state = 0;\n");
+                    if (!JavaTypes.primitiveTypes.contains(attr.returns)) {
+                        sb.append("        zzattr_" + attr.attr + "_cache = null;\n");
+                    }
                 }
             }
         }
@@ -812,6 +734,13 @@ public class Generator {
         return hasAttribute;
     }
 
+    private boolean hasCustomToString(AstEntityDefinition c) {
+        for (AttributeDef attr : prog.attrDefs) {
+            if (attr.attr.equals("toString") && hasAttribute(c, attr)) return true;
+        }
+        return false;
+    }
+
     private void createAcceptMethods(ConstructorDef c, StringBuilder sb) {
         sb.append("    @Override public void accept(Visitor v) {\n");
         sb.append("        v.visit(this);\n");
@@ -832,24 +761,8 @@ public class Generator {
             }
         }
 
-        boolean first;
         sb.append("    @Override public String toString() {\n");
-        sb.append("        return \"" + c.getName());
-        if (c.parameters.size() > 0) {
-            sb.append("(\" + ");
-            first = true;
-            for (Parameter p : c.parameters) {
-                if (!first) {
-                    sb.append(" + \", \" +");
-                }
-                sb.append(p.name);
-                first = false;
-            }
-            sb.append("+\")\"");
-        } else {
-            sb.append("\"");
-        }
-        sb.append(";\n");
+        sb.append("        return ").append(getTreeUtilType()).append(".render(this);\n");
         sb.append("    }\n");
     }
 
@@ -873,7 +786,6 @@ public class Generator {
         sb.append("    ").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" getParent();\n");
         sb.append("    ").append(c.getName(typePrefix)).append(" copy();\n");
         sb.append("    ").append(c.getName(typePrefix)).append(" copyWithRefs();\n");
-        sb.append("    void clearAttributes();\n");
         sb.append("    void clearAttributesLocal();\n");
 
         createAttributeStubs(c, sb);
@@ -928,6 +840,27 @@ public class Generator {
             }
         }
         sb.append("    }\n");
+
+        // Stack-safe visitor for very deep trees. DefaultVisitor remains recursive for compatibility.
+        sb.append("    public static abstract class IterativeVisitor implements Visitor {\n");
+        sb.append("        public final void traverse(").append(getCommonSupertypeType()).append(" root) {\n");
+        sb.append("            java.util.ArrayDeque<").append(getCommonSupertypeType())
+                .append("> stack = new java.util.ArrayDeque<>();\n");
+        sb.append("            stack.push(root);\n");
+        sb.append("            while (!stack.isEmpty()) {\n");
+        sb.append("                ").append(getCommonSupertypeType()).append(" elem = stack.pop();\n");
+        sb.append("                elem.accept(this);\n");
+        sb.append("                for (int i = elem.size() - 1; i >= 0; i--) stack.push(elem.get(i));\n");
+        sb.append("            }\n");
+        sb.append("        }\n");
+        for (AstEntityDefinition contained : defs) {
+            if (contained instanceof AstBaseTypeDefinition) {
+                AstBaseTypeDefinition baseType = (AstBaseTypeDefinition) contained;
+                sb.append("        @Override public void visit(").append(baseType.getName(typePrefix)).append(" ")
+                        .append(toFirstLower(baseType.getName())).append(") {}\n");
+            }
+        }
+        sb.append("    }\n");
     }
 
     private void generateBaseClasses() {
@@ -973,6 +906,7 @@ public class Generator {
         for (ListDef l : prog.listDefs) {
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(" + printType(l.itemType) + " ... elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
+            sb.append("        l.ensureCapacity(elements.length);\n");
             sb.append("        for (var e : elements) l.add(e);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
@@ -1128,6 +1062,7 @@ public class Generator {
         sb.append("final class ").append(l.getName(typePrefix)).append("Impl extends ")
                 .append(l.getName(typePrefix)).append(" {\n ");
 
+        createShallowCopyMethod(l, sb);
 
         createGetSetParentMethods(sb);
 
@@ -1149,6 +1084,9 @@ public class Generator {
         sb.append("    @Override\n");
         sb.append("    public " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement) {\n");
         sb.append("        return ((AsgList<" + printType(l.itemType) + ">) this).set(i, (" + printType(l.itemType) + ") newElement);\n");
+        sb.append("    }\n\n");
+        sb.append("    @Override public boolean structuralEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
         sb.append("    }\n\n");
 
         // match methods for switch
@@ -1179,16 +1117,7 @@ public class Generator {
         }
 
         sb.append("    @Override public String toString() {\n");
-        sb.append("        StringBuilder result = new StringBuilder(\"" + l.getName() + "(\");\n");
-        sb.append("        boolean first = true;\n");
-        sb.append("        for (" + printType(l.itemType) + " i : this ) {\n");
-        sb.append("            if (!first) { result.append(\", \"); }\n");
-        sb.append("            if (result.length() > 1000) { result.append(\"...\"); break; }\n");
-        sb.append("            result.append(i);\n");
-        sb.append("            first = false;\n");
-        sb.append("        }\n");
-        sb.append("        result.append(\")\");\n");
-        sb.append("        return result.toString();\n");
+        sb.append("        return ").append(getTreeUtilType()).append(".render(this);\n");
         sb.append("    }\n");
     }
 
@@ -1210,11 +1139,8 @@ public class Generator {
         sb.append(" {\n");
 
         sb.append("    public ").append(l.getName(typePrefix)).append(" copy() {\n");
-        sb.append("        ").append(l.getName(typePrefix)).append(" result = new ").append(l.getName(typePrefix)).append("Impl();\n");
-        sb.append("        for (").append(printType(l.itemType)).append(" elem : this) {\n");
-        sb.append("            result.add((").append(printType(l.itemType)).append(") elem.copy());\n");
-        sb.append("        }\n");
-        sb.append("        return result;\n");
+        sb.append("        return (").append(l.getName(typePrefix)).append(") ")
+                .append(getTreeUtilType()).append(".copy(this, false);\n");
         sb.append("    }\n\n");
 
         createCopyWithRefsMethod(l, sb);
@@ -1223,6 +1149,20 @@ public class Generator {
 
         sb.append("}\n");
         fileGenerator.createFile(l.getName(typePrefix) + ".java", sb);
+    }
+
+    private void createShallowCopyMethod(ListDef l, StringBuilder sb) {
+        String implType = l.getName(typePrefix) + "Impl";
+        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
+        for (FieldDef field : prog.fieldDefs) {
+            if (hasField(l, field)) {
+                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
+                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+            }
+        }
+        sb.append("        return result;\n");
+        sb.append("    }\n\n");
     }
 
 
@@ -1261,7 +1201,15 @@ public class Generator {
                 .append("    ").append(getCommonSupertypeType()).append(" copy();\n")
                 .append("    ").append(getCommonSupertypeType()).append(" copyWithRefs();\n")
                 .append("    int size();\n")
-                .append("    void clearAttributes();\n")
+                .append("    default void clearAttributes() {\n")
+                .append("        java.util.ArrayDeque<").append(getCommonSupertypeType()).append("> stack = new java.util.ArrayDeque<>();\n")
+                .append("        stack.push(this);\n")
+                .append("        while (!stack.isEmpty()) {\n")
+                .append("            ").append(getCommonSupertypeType()).append(" elem = stack.pop();\n")
+                .append("            elem.clearAttributesLocal();\n")
+                .append("            for (int i = elem.size() - 1; i >= 0; i--) stack.push(elem.get(i));\n")
+                .append("        }\n")
+                .append("    }\n")
                 .append("    void clearAttributesLocal();\n")
                 .append("    ").append(getCommonSupertypeType()).append(" get(int i);\n")
                 .append("    ").append(getCommonSupertypeType()).append(" set(int i, ").append(getCommonSupertypeType()).append(" newElement);\n")
@@ -1325,8 +1273,240 @@ public class Generator {
                 .append("    }\n");
 
         sb.append("}\n\n");
+        generateTreeUtilities(sb);
 
         fileGenerator.createFile(getCommonSupertypeType() + ".java", sb);
+    }
+
+    private void generateTreeUtilities(StringBuilder sb) {
+        String elementType = getCommonSupertypeType();
+        sb.append("@SuppressWarnings({\"rawtypes\", \"unchecked\"})\n");
+        sb.append("final class ").append(getTreeUtilType()).append(" {\n");
+        sb.append("    private ").append(getTreeUtilType()).append("() {}\n\n");
+        sb.append("    static ").append(elementType).append(" copy(").append(elementType)
+                .append(" root, boolean withRefs) {\n");
+        sb.append("        java.util.IdentityHashMap<").append(elementType).append(", ")
+                .append(elementType).append("> copies = withRefs ? new java.util.IdentityHashMap<>() : null;\n");
+        sb.append("        java.util.ArrayList<").append(elementType)
+                .append("> originals = withRefs ? new java.util.ArrayList<>() : null;\n");
+        sb.append("        java.util.ArrayDeque<").append(elementType)
+                .append("> originalStack = new java.util.ArrayDeque<>();\n");
+        sb.append("        java.util.ArrayDeque<").append(elementType)
+                .append("> copyStack = new java.util.ArrayDeque<>();\n");
+        sb.append("        ").append(elementType).append(" rootCopy = shallowCopy(root);\n");
+        sb.append("        originalStack.push(root);\n");
+        sb.append("        copyStack.push(rootCopy);\n");
+        sb.append("        if (withRefs) { copies.put(root, rootCopy); originals.add(root); }\n");
+        sb.append("        while (!originalStack.isEmpty()) {\n");
+        sb.append("            ").append(elementType).append(" original = originalStack.pop();\n");
+        sb.append("            ").append(elementType).append(" copy = copyStack.pop();\n");
+        sb.append("            for (int i = 0, n = original.size(); i < n; i++) {\n");
+        sb.append("                ").append(elementType).append(" child = original.get(i);\n");
+        sb.append("                boolean generatedChild = isGenerated(child);\n");
+        sb.append("                ").append(elementType)
+                .append(" childCopy = generatedChild ? shallowCopy(child) : ")
+                .append("(withRefs ? child.copyWithRefs() : child.copy());\n");
+        sb.append("                if (copy instanceof AsgList list) list.add(childCopy);\n");
+        sb.append("                else copy.set(i, childCopy);\n");
+        sb.append("                if (generatedChild) {\n");
+        sb.append("                    originalStack.push(child);\n");
+        sb.append("                    copyStack.push(childCopy);\n");
+        sb.append("                }\n");
+        sb.append("                if (withRefs) {\n");
+        sb.append("                    copies.put(child, childCopy);\n");
+        sb.append("                    if (generatedChild) originals.add(child);\n");
+        sb.append("                }\n");
+        sb.append("            }\n");
+        sb.append("        }\n");
+        sb.append("        if (withRefs) {\n");
+        sb.append("            for (").append(elementType).append(" original : originals) {\n");
+        sb.append("                repairReferences(original, copies.get(original), copies);\n");
+        sb.append("            }\n");
+        sb.append("        }\n");
+        sb.append("        return rootCopy;\n");
+        sb.append("    }\n\n");
+
+        sb.append("    static boolean structuralEquals(").append(elementType).append(" left, ")
+                .append(elementType).append(" right) {\n");
+        sb.append("        if (left == right) return true;\n");
+        sb.append("        if (right == null) return false;\n");
+        sb.append("        java.util.ArrayDeque<").append(elementType)
+                .append("> leftStack = new java.util.ArrayDeque<>();\n");
+        sb.append("        java.util.ArrayDeque<").append(elementType)
+                .append("> rightStack = new java.util.ArrayDeque<>();\n");
+        sb.append("        leftStack.push(left);\n");
+        sb.append("        rightStack.push(right);\n");
+        sb.append("        while (!leftStack.isEmpty()) {\n");
+        sb.append("            ").append(elementType).append(" a = leftStack.pop();\n");
+        sb.append("            ").append(elementType).append(" b = rightStack.pop();\n");
+        sb.append("            if (!isGenerated(a)) {\n");
+        sb.append("                if (!a.structuralEquals(b)) return false;\n");
+        sb.append("                continue;\n");
+        sb.append("            }\n");
+        sb.append("            if (!localEquals(a, b)) return false;\n");
+        sb.append("            int n = a.size();\n");
+        sb.append("            if (b.size() != n) return false;\n");
+        sb.append("            for (int i = 0; i < n; i++) {\n");
+        sb.append("                leftStack.push(a.get(i));\n");
+        sb.append("                rightStack.push(b.get(i));\n");
+        sb.append("            }\n");
+        sb.append("        }\n");
+        sb.append("        return true;\n");
+        sb.append("    }\n\n");
+
+        sb.append("    static String render(").append(elementType).append(" root) {\n");
+        sb.append("        StringBuilder result = new StringBuilder();\n");
+        sb.append("        java.util.ArrayDeque<Object> tasks = new java.util.ArrayDeque<>();\n");
+        sb.append("        tasks.push(root);\n");
+        sb.append("        while (!tasks.isEmpty()) {\n");
+        sb.append("            Object task = tasks.pop();\n");
+        sb.append("            if (task instanceof String text) result.append(text);\n");
+        sb.append("            else if (task instanceof RenderListState state) {\n");
+        sb.append("                if (state.index >= state.list.size()) result.append(\")\");\n");
+        sb.append("                else {\n");
+        sb.append("                    int index = state.index++;\n");
+        sb.append("                    tasks.push(state);\n");
+        sb.append("                    tasks.push(state.list.get(index));\n");
+        sb.append("                    if (index > 0) tasks.push(\", \");\n");
+        sb.append("                }\n");
+        sb.append("            }\n");
+        sb.append("            else appendRenderTasks(result, tasks, (").append(elementType).append(") task);\n");
+        sb.append("            if (result.length() > 1000) { result.append(\"...\"); break; }\n");
+        sb.append("        }\n");
+        sb.append("        return result.toString();\n");
+        sb.append("    }\n\n");
+
+        sb.append("    private static void appendRenderTasks(StringBuilder result, java.util.ArrayDeque<Object> tasks, ")
+                .append(elementType).append(" elem) {\n");
+        for (ConstructorDef c : prog.constructorDefs) {
+            String implType = c.getName(typePrefix) + "Impl";
+            sb.append("        if (elem instanceof ").append(implType).append(" value) {\n");
+            if (hasCustomToString(c)) {
+                sb.append("            result.append(value.toString());\n");
+            } else {
+                sb.append("            result.append(\"").append(c.getName()).append("\");\n");
+                if (!c.parameters.isEmpty()) {
+                    sb.append("            result.append(\"(\");\n");
+                    sb.append("            tasks.push(\")\");\n");
+                    for (int i = c.parameters.size() - 1; i >= 0; i--) {
+                        Parameter p = c.parameters.get(i);
+                        String getter = "value.get" + toFirstUpper(p.name) + "()";
+                        if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                            sb.append("            tasks.push(").append(getter).append(");\n");
+                        } else if (prog.hasElement(p.getTyp())) {
+                            sb.append("            tasks.push(referenceString(").append(getter).append("));\n");
+                        } else {
+                            sb.append("            tasks.push(String.valueOf(").append(getter).append("));\n");
+                        }
+                        if (i > 0) sb.append("            tasks.push(\", \");\n");
+                    }
+                }
+            }
+            sb.append("            return;\n");
+            sb.append("        }\n");
+        }
+        for (ListDef l : prog.listDefs) {
+            String implType = l.getName(typePrefix) + "Impl";
+            sb.append("        if (elem instanceof ").append(implType).append(" value) {\n");
+            if (hasCustomToString(l)) {
+                sb.append("            result.append(value.toString());\n");
+            } else {
+                sb.append("            result.append(\"").append(l.getName()).append("(\");\n");
+                sb.append("            tasks.push(new RenderListState(value));\n");
+            }
+            sb.append("            return;\n");
+            sb.append("        }\n");
+        }
+        sb.append("        result.append(elem.getClass().getSimpleName());\n");
+        sb.append("    }\n\n");
+        sb.append("    private static String referenceString(Object ref) {\n");
+        sb.append("        if (ref == null) return \"null\";\n");
+        sb.append("        return ref.getClass().getSimpleName() + \"@\" + Integer.toHexString(System.identityHashCode(ref));\n");
+        sb.append("    }\n\n");
+        sb.append("    private static final class RenderListState {\n");
+        sb.append("        final ").append(elementType).append(" list;\n");
+        sb.append("        int index;\n");
+        sb.append("        RenderListState(").append(elementType).append(" list) { this.list = list; }\n");
+        sb.append("    }\n\n");
+
+        sb.append("    private static boolean localEquals(").append(elementType).append(" left, ")
+                .append(elementType).append(" right) {\n");
+        for (ConstructorDef c : prog.constructorDefs) {
+            String implType = c.getName(typePrefix) + "Impl";
+            String interfaceType = c.getName(typePrefix);
+            sb.append("        if (left instanceof ").append(implType).append(" source) {\n");
+            sb.append("            if (!(right instanceof ").append(interfaceType).append(" target)) return false;\n");
+            List<String> comparisons = new ArrayList<>();
+            for (Parameter p : c.parameters) {
+                if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
+                String leftExpr = "source.get" + toFirstUpper(p.name) + "()";
+                String rightExpr = "target.get" + toFirstUpper(p.name) + "()";
+                if (p.isRef && prog.hasElement(p.getTyp())) {
+                    comparisons.add(leftExpr + " == " + rightExpr);
+                } else {
+                    comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
+                }
+            }
+            sb.append("            return ").append(comparisons.isEmpty()
+                    ? "true" : String.join(" && ", comparisons)).append(";\n");
+            sb.append("        }\n");
+        }
+        for (ListDef l : prog.listDefs) {
+            String implType = l.getName(typePrefix) + "Impl";
+            String interfaceType = l.getName(typePrefix);
+            sb.append("        if (left instanceof ").append(implType)
+                    .append(") return right instanceof ").append(interfaceType).append(";\n");
+        }
+        sb.append("        return false;\n");
+        sb.append("    }\n\n");
+
+        sb.append("    private static ").append(elementType).append(" shallowCopy(")
+                .append(elementType).append(" elem) {\n");
+        for (ConstructorDef c : prog.constructorDefs) {
+            String implType = c.getName(typePrefix) + "Impl";
+            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
+        }
+        for (ListDef l : prog.listDefs) {
+            String implType = l.getName(typePrefix) + "Impl";
+            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
+        }
+        sb.append("        throw new IllegalArgumentException(\"Unsupported AST implementation: \" + elem.getClass());\n");
+        sb.append("    }\n\n");
+
+        sb.append("    private static boolean isGenerated(").append(elementType).append(" elem) {\n");
+        for (ConstructorDef c : prog.constructorDefs) {
+            sb.append("        if (elem instanceof ").append(c.getName(typePrefix)).append("Impl) return true;\n");
+        }
+        for (ListDef l : prog.listDefs) {
+            sb.append("        if (elem instanceof ").append(l.getName(typePrefix)).append("Impl) return true;\n");
+        }
+        sb.append("        return false;\n");
+        sb.append("    }\n\n");
+
+        sb.append("    private static void repairReferences(").append(elementType).append(" original, ")
+                .append(elementType).append(" copy, java.util.IdentityHashMap<")
+                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
+        for (ConstructorDef c : prog.constructorDefs) {
+            List<Parameter> refs = new ArrayList<>();
+            for (Parameter p : c.parameters) {
+                if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
+            }
+            if (refs.isEmpty()) continue;
+            String implType = c.getName(typePrefix) + "Impl";
+            sb.append("        if (original instanceof ").append(implType).append(" source) {\n");
+            sb.append("            ").append(implType).append(" target = (").append(implType).append(") copy;\n");
+            for (Parameter p : refs) {
+                sb.append("            ").append(elementType).append(" mapped_").append(p.name)
+                        .append(" = copies.get(source.get").append(toFirstUpper(p.name)).append("());\n");
+                sb.append("            if (mapped_").append(p.name).append(" != null) target.set")
+                        .append(toFirstUpper(p.name)).append("((").append(printType(p.getTyp()))
+                        .append(") mapped_").append(p.name).append(");\n");
+            }
+            sb.append("            return;\n");
+            sb.append("        }\n");
+        }
+        sb.append("    }\n");
+        sb.append("}\n");
     }
 
 
@@ -1346,6 +1526,10 @@ public class Generator {
 
     private String getCommonSupertypeType() {
         return typePrefix + "Element";
+    }
+
+    private String getTreeUtilType() {
+        return typePrefix + "TreeUtil";
     }
 
     private void printProlog(StringBuilder sb) {
