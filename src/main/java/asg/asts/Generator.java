@@ -831,8 +831,9 @@ public class Generator {
                     }
                 } else {
                     ListDef l = ((ListDef) contained);
-                    sb.append("          for (" + printType(l.itemType) + " i : " + toFirstLower(c.getName()) + " ) {\n");
-                    sb.append("              i.accept(this);\n");
+                    String listName = toFirstLower(c.getName());
+                    sb.append("          for (int i = 0, n = ").append(listName).append(".size(); i < n; i++) {\n");
+                    sb.append("              ").append(listName).append(".get(i).accept(this);\n");
                     sb.append("          }\n");
                 }
 
@@ -907,7 +908,7 @@ public class Generator {
             sb.append("    public static " + l.getName(typePrefix) + " " + l.getName() + "(" + printType(l.itemType) + " ... elements ) {\n");
             sb.append("        " + l.getName(typePrefix) + " l = new " + l.getName(typePrefix) + "Impl();\n");
             sb.append("        l.ensureCapacity(elements.length);\n");
-            sb.append("        for (var e : elements) l.add(e);\n");
+            sb.append("        for (int i = 0; i < elements.length; i++) l.add(elements[i]);\n");
             sb.append("        return l;\n");
             sb.append("    }\n");
 
@@ -1214,7 +1215,7 @@ public class Generator {
                 .append("    ").append(getCommonSupertypeType()).append(" get(int i);\n")
                 .append("    ").append(getCommonSupertypeType()).append(" set(int i, ").append(getCommonSupertypeType()).append(" newElement);\n")
                 .append("    void forEachElement(java.util.function.Consumer<? super ").append(getCommonSupertypeType()).append("> action);\n")
-                .append("    default void trimToSize() { forEachElement(").append(getCommonSupertypeType()).append("::trimToSize); }\n")
+                .append("    default void trimToSize() { for (int i = 0, n = size(); i < n; i++) get(i).trimToSize(); }\n")
                 .append("    void setParent(").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" parent);\n")
                 .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
                 .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
@@ -1319,7 +1320,8 @@ public class Generator {
         sb.append("            }\n");
         sb.append("        }\n");
         sb.append("        if (withRefs) {\n");
-        sb.append("            for (").append(elementType).append(" original : originals) {\n");
+        sb.append("            for (int i = 0, n = originals.size(); i < n; i++) {\n");
+        sb.append("                ").append(elementType).append(" original = originals.get(i);\n");
         sb.append("                repairReferences(original, copies.get(original), copies);\n");
         sb.append("            }\n");
         sb.append("        }\n");

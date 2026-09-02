@@ -2,13 +2,43 @@ package test.stmt;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static test.stmt.TS.*;
 
 class GeneratedPerformanceTest {
+
+    @Test
+    void bulkInsertionFromListDoesNotAllocateAnIterator() {
+        var first = ExprStatement(IntLiteral(1));
+        var second = ExprStatement(IntLiteral(2));
+        List<TSStatement> source = new AbstractList<>() {
+            @Override public TSStatement get(int index) {
+                return switch (index) {
+                    case 0 -> first;
+                    case 1 -> second;
+                    default -> throw new IndexOutOfBoundsException(index);
+                };
+            }
+
+            @Override public int size() { return 2; }
+
+            @Override public Iterator<TSStatement> iterator() {
+                throw new AssertionError("List iterator must not be requested");
+            }
+        };
+
+        var destination = StatementList();
+        assertTrue(destination.addAll(source));
+        assertSame(first, destination.get(0));
+        assertSame(second, destination.get(1));
+        assertSame(destination, first.getParent());
+        assertSame(destination, second.getParent());
+    }
 
     @Test
     void indexedBulkInsertionPreservesOrderAndParents() {
