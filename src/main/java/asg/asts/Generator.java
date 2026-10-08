@@ -297,6 +297,7 @@ public class Generator {
 
         // copyWithRefs method
         createCopyWithRefsMethod(c, sb);
+        createReferenceRepairMethods(c, sb);
 
         // clear attributes method
         createClearMethod(c, sb);
@@ -322,6 +323,11 @@ public class Generator {
 
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
         String treeUtil = getTreeUtilType();
+        sb.append("    @Override public java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        sb.append("        if (!(e instanceof ").append(c.getName(typePrefix)).append(" target)) return false;\n");
+        List<String> comparisons = fieldComparisons(c, "this.", "target.");
+        sb.append("        return ").append(comparisons.isEmpty() ? "true" : String.join(" && ", comparisons)).append(";\n");
+        sb.append("    }\n\n");
         sb.append("    public boolean structuralEquals(" + getCommonSupertypeType() + " e) {\n");
         sb.append("        return zzStructuralEquals(e, 0);\n");
         sb.append("    }\n\n");
@@ -341,6 +347,25 @@ public class Generator {
         }
         sb.append("        return true;\n");
         sb.append("    }\n");
+    }
+
+    private void createReferenceRepairMethods(ConstructorDef c, StringBuilder sb) {
+        List<Parameter> refs = new ArrayList<>();
+        for (Parameter p : c.parameters) {
+            if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
+        }
+        if (refs.isEmpty()) return;
+        String elementType = getCommonSupertypeType();
+        sb.append("    @Override public boolean zzHasReferences() { return true; }\n");
+        sb.append("    @Override public void zzRepairReferences(java.util.IdentityHashMap<")
+                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
+        for (Parameter p : refs) {
+            sb.append("        ").append(elementType).append(" mapped_").append(p.name)
+                    .append(" = copies.get(this.").append(p.name).append(");\n");
+            sb.append("        if (mapped_").append(p.name).append(" != null) this.").append(p.name)
+                    .append(" = (").append(printType(p.getTyp())).append(") mapped_").append(p.name).append(";\n");
+        }
+        sb.append("    }\n\n");
     }
 
     /**
@@ -1191,6 +1216,9 @@ public class Generator {
         String listType = l.getName(typePrefix);
         String listImplType = listType + "Impl";
         String treeUtil = getTreeUtilType();
+        sb.append("    @Override public java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        sb.append("        return e instanceof ").append(listType).append(";\n");
+        sb.append("    }\n\n");
         sb.append("    @Override public boolean structuralEquals(").append(getCommonSupertypeType()).append(" e) {\n");
         sb.append("        return zzStructuralEquals(e, 0);\n");
         sb.append("    }\n\n");
@@ -1212,7 +1240,6 @@ public class Generator {
                 .append(treeUtil).append(".copy(this, false);\n");
         sb.append("        ").append(listImplType).append(" result = zzShallowCopy();\n");
         sb.append("        int n = size();\n");
-        sb.append("        result.ensureCapacity(n);\n");
         sb.append("        for (int i = 0; i < n; i++) {\n");
         sb.append("            result.add((").append(printType(l.itemType)).append(") get(i).zzCopy(depth + 1));\n");
         sb.append("        }\n");
@@ -1284,6 +1311,7 @@ public class Generator {
         String implType = l.getName(typePrefix) + "Impl";
         sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
+        sb.append("        result.ensureCapacity(size());\n");
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(l, field)) {
                 sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
@@ -1354,6 +1382,13 @@ public class Generator {
                 .append("    default ").append(getCommonSupertypeType()).append(" zzCopy(int depth) { return copy(); }\n")
                 .append("    /** Internal, for the generated comparison: structuralEquals; depth is how far the recursion went. */\n")
                 .append("    default boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" other, int depth) { return structuralEquals(other); }\n")
+                .append("    /** Internal: compares generated type and fields; null delegates the entire comparison to a custom node. */\n")
+                .append("    default java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" other) { return null; }\n")
+                .append("    /** Internal: whether a generated copy has reference fields to repair. */\n")
+                .append("    default boolean zzHasReferences() { return false; }\n")
+                .append("    /** Internal: remaps reference fields in a shallow copy after every target has been copied. */\n")
+                .append("    default void zzRepairReferences(java.util.IdentityHashMap<").append(getCommonSupertypeType()).append(", ")
+                .append(getCommonSupertypeType()).append("> copies) {}\n")
                 .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
                 .append("    default java.util.List<Integer> pathTo(").append(getCommonSupertypeType()).append("  elem) {\n")
                 .append("        java.util.List<Integer> path = new java.util.ArrayList<>();\n")
@@ -1431,15 +1466,17 @@ public class Generator {
         sb.append("        java.util.IdentityHashMap<").append(elementType).append(", ")
                 .append(elementType).append("> copies = withRefs ? new java.util.IdentityHashMap<>() : null;\n");
         sb.append("        java.util.ArrayList<").append(elementType)
-                .append("> originals = withRefs ? new java.util.ArrayList<>() : null;\n");
+                .append("> repairs = withRefs ? new java.util.ArrayList<>() : null;\n");
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> originalStack = new java.util.ArrayDeque<>();\n");
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> copyStack = new java.util.ArrayDeque<>();\n");
         sb.append("        ").append(elementType).append(" rootCopy = root.zzShallowCopy();\n");
-        sb.append("        originalStack.push(root);\n");
-        sb.append("        copyStack.push(rootCopy);\n");
-        sb.append("        if (withRefs) { copies.put(root, rootCopy); originals.add(root); }\n");
+        sb.append("        if (root.size() != 0) { originalStack.push(root); copyStack.push(rootCopy); }\n");
+        sb.append("        if (withRefs) {\n");
+        sb.append("            copies.put(root, rootCopy);\n");
+        sb.append("            if (rootCopy.zzHasReferences()) repairs.add(rootCopy);\n");
+        sb.append("        }\n");
         sb.append("        while (!originalStack.isEmpty()) {\n");
         sb.append("            ").append(elementType).append(" original = originalStack.pop();\n");
         sb.append("            ").append(elementType).append(" copy = copyStack.pop();\n");
@@ -1452,21 +1489,18 @@ public class Generator {
                 .append("(withRefs ? child.copyWithRefs() : child.copy());\n");
         sb.append("                if (copy instanceof AsgList list) list.add(childCopy);\n");
         sb.append("                else copy.set(i, childCopy);\n");
-        sb.append("                if (generatedChild) {\n");
+        sb.append("                if (generatedChild && child.size() != 0) {\n");
         sb.append("                    originalStack.push(child);\n");
         sb.append("                    copyStack.push(childCopy);\n");
         sb.append("                }\n");
         sb.append("                if (withRefs) {\n");
         sb.append("                    copies.put(child, childCopy);\n");
-        sb.append("                    if (generatedChild) originals.add(child);\n");
+        sb.append("                    if (generatedChild && childCopy.zzHasReferences()) repairs.add(childCopy);\n");
         sb.append("                }\n");
         sb.append("            }\n");
         sb.append("        }\n");
         sb.append("        if (withRefs) {\n");
-        sb.append("            for (int i = 0, n = originals.size(); i < n; i++) {\n");
-        sb.append("                ").append(elementType).append(" original = originals.get(i);\n");
-        sb.append("                repairReferences(original, copies.get(original), copies);\n");
-        sb.append("            }\n");
+        sb.append("            for (int i = 0, n = repairs.size(); i < n; i++) repairs.get(i).zzRepairReferences(copies);\n");
         sb.append("        }\n");
         sb.append("        return rootCopy;\n");
         sb.append("    }\n\n");
@@ -1484,7 +1518,12 @@ public class Generator {
         sb.append("        while (!leftStack.isEmpty()) {\n");
         sb.append("            ").append(elementType).append(" a = leftStack.pop();\n");
         sb.append("            ").append(elementType).append(" b = rightStack.pop();\n");
-        sb.append("            if (!localEquals(a, b)) return false;\n");
+        sb.append("            java.lang.Boolean equal = a.zzLocalEquals(b);\n");
+        sb.append("            if (equal == null) {\n");
+        sb.append("                if (!a.structuralEquals(b)) return false;\n");
+        sb.append("                continue;\n");
+        sb.append("            }\n");
+        sb.append("            if (!equal) return false;\n");
         sb.append("            int n = a.size();\n");
         sb.append("            if (b.size() != n) return false;\n");
         sb.append("            for (int i = 0; i < n; i++) {\n");
@@ -1570,50 +1609,6 @@ public class Generator {
         sb.append("        RenderListState(").append(elementType).append(" list) { this.list = list; }\n");
         sb.append("    }\n\n");
 
-        sb.append("    private static boolean localEquals(").append(elementType).append(" left, ")
-                .append(elementType).append(" right) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            String implType = c.getName(typePrefix) + "Impl";
-            String interfaceType = c.getName(typePrefix);
-            sb.append("        if (left instanceof ").append(implType).append(" source) {\n");
-            sb.append("            if (!(right instanceof ").append(interfaceType).append(" target)) return false;\n");
-            List<String> comparisons = fieldComparisons(c, "source.", "target.");
-            sb.append("            return ").append(comparisons.isEmpty()
-                    ? "true" : String.join(" && ", comparisons)).append(";\n");
-            sb.append("        }\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            String implType = l.getName(typePrefix) + "Impl";
-            String interfaceType = l.getName(typePrefix);
-            sb.append("        if (left instanceof ").append(implType)
-                    .append(") return right instanceof ").append(interfaceType).append(";\n");
-        }
-        sb.append("        return false;\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static void repairReferences(").append(elementType).append(" original, ")
-                .append(elementType).append(" copy, java.util.IdentityHashMap<")
-                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            List<Parameter> refs = new ArrayList<>();
-            for (Parameter p : c.parameters) {
-                if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
-            }
-            if (refs.isEmpty()) continue;
-            String implType = c.getName(typePrefix) + "Impl";
-            sb.append("        if (original instanceof ").append(implType).append(" source) {\n");
-            sb.append("            ").append(implType).append(" target = (").append(implType).append(") copy;\n");
-            for (Parameter p : refs) {
-                sb.append("            ").append(elementType).append(" mapped_").append(p.name)
-                        .append(" = copies.get(source.get").append(toFirstUpper(p.name)).append("());\n");
-                sb.append("            if (mapped_").append(p.name).append(" != null) target.set")
-                        .append(toFirstUpper(p.name)).append("((").append(printType(p.getTyp()))
-                        .append(") mapped_").append(p.name).append(");\n");
-            }
-            sb.append("            return;\n");
-            sb.append("        }\n");
-        }
-        sb.append("    }\n");
         sb.append("}\n");
     }
 

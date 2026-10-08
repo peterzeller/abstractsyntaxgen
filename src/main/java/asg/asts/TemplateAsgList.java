@@ -204,8 +204,52 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         Objects.requireNonNull(action);
         for (int i=0, n=size; i<n; i++) action.accept(get(i));
     }
-    @SuppressWarnings("unchecked")
-    @Override public Spliterator<T> spliterator() { return Arrays.spliterator((T[]) elems, 0, size); }
+    @Override public Spliterator<T> spliterator() { return new AsgListSpliterator(0, -1, 0); }
+
+    private final class AsgListSpliterator implements Spliterator<T> {
+        private int index;
+        private int fence;
+        private int expectedModCount;
+        AsgListSpliterator(int index, int fence, int expectedModCount) {
+            this.index = index;
+            this.fence = fence;
+            this.expectedModCount = expectedModCount;
+        }
+        private int fence() {
+            if (fence < 0) { expectedModCount = modCount; fence = size; }
+            return fence;
+        }
+        private void check() {
+            if (modCount != expectedModCount) throw new ConcurrentModificationException();
+        }
+        @Override public Spliterator<T> trySplit() {
+            int hi = fence(), lo = index, mid = lo + ((hi - lo) >>> 1);
+            check();
+            if (lo >= mid) return null;
+            index = mid;
+            return new AsgListSpliterator(lo, mid, expectedModCount);
+        }
+        @Override public boolean tryAdvance(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            int hi = fence();
+            check();
+            if (index >= hi) return false;
+            action.accept(at(index++));
+            check();
+            return true;
+        }
+        @Override public void forEachRemaining(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            int hi = fence();
+            check();
+            while (index < hi) {
+                action.accept(at(index++));
+                check();
+            }
+        }
+        @Override public long estimateSize() { return fence() - index; }
+        @Override public int characteristics() { return ORDERED | SIZED | SUBSIZED; }
+    }
 
     // -------- iterators (remove() and set() keep the parents right) ----------
     @Override public Iterator<T> iterator() {

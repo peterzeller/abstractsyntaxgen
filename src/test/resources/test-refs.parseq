@@ -40,4 +40,8 @@ Operator =
 ExprList * Expr
 TypeRef = SimpleType(String typeName)
 
+LeafTarget()
+LeafReference(ref LeafTarget leafTarget)
+LeafPair(LeafReference reference, LeafTarget leafTarget)
+
 attributes:

@@ -345,7 +345,18 @@ a comparison):
 - **`copy()` and `structuralEquals()` do not ask a node which type it is.** Each generated element copies and compares
   itself (`zzCopy`, `zzStructuralEquals`), recursing for the first 256 levels; a tree which is deeper continues in an
   iterative loop, so the depth of a tree is still not limited by the stack. This is about twice as fast as a search
-  for the type of each node, and it allocates nothing for a small tree.
+  for the type of each node, and avoids traversal scratch allocations for a small tree. The iterative comparison
+  delegates a custom node's entire subtree to its `structuralEquals` implementation, just as the recursive path does.
+- **`copyWithRefs()` maps every copied node, but repairs only copies with reference fields.** Generated virtual methods
+  remap those fields after all targets have been copied, including later siblings and leaves; external and null
+  references are preserved. Iterative copying reserves each list's capacity once and does not schedule leaves on its
+  work stacks. `src/test/java/test/bench/ReferenceCopyBench.java` measures this path separately, with warmup rounds,
+  median times and allocated bytes per node. On a synthetic 102,001-node tree with one reference per four declarations,
+  three interleaved comparisons on OpenJDK 25 (Parallel GC, `-Xmx2g`, 24 measured rounds per JVM) reduced reference-copy
+  time from 60.6–66.5 to 46.6–50.0 ns/node and allocation from 89.4 to 75.2 bytes/node. These are microbenchmark results,
+  not a measurement of an additional WurstScript build speedup.
+- **List spliterators bind on traversal and check structural modifications.** Streams see changes made before their
+  terminal operation starts; split traversals preserve order and size and detect subsequent structural changes.
 - **A `DefaultVisitor` which does not override a list's `visit` method visits the elements of the lists directly**,
   from the element above them. It visits the same elements in the same order; a visitor which overrides the visit of
   a list is told of every list, as before.
