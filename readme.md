@@ -169,6 +169,27 @@ oldStmt.replaceBy(newStmt);
 list.set(1, newStmt);
 ```
 
+**Replacing by several nodes (splicing)**
+
+A node in a list can be replaced by any number of nodes, which take its place in order; no node removes it.
+The new nodes must not be in a tree, and nothing changes if one of them is.
+
+```java
+oldStmt.replaceByAll(List.of(stmtA, stmtB));   // one node
+oldStmt.replaceByAll(List.of());                // removes it
+```
+
+To replace many nodes of one list, give `replaceEach` a map from the node to its replacements. It makes one pass
+over the list however many nodes are replaced, where one `replaceByAll` after another is a pass each. The keys are
+looked up as the map compares them, so use an `IdentityHashMap` to replace by identity.
+
+```java
+Map<Statement, List<Statement>> replacements = new IdentityHashMap<>();
+replacements.put(dead, List.of());                       // remove
+replacements.put(call, List.of(setup, call.copy()));     // replace by two
+int replaced = list.replaceEach(replacements);           // the number of nodes replaced
+```
+
 #### 3. Moving Nodes Between Trees
 
 **Problem**: Direct movement violates tree invariant

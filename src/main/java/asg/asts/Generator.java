@@ -586,6 +586,22 @@ public class Generator {
         sb.append("            }\n");
         sb.append("        }\n");
         sb.append("    }\n\n");
+
+        // replaceByAll: an element of a list can be replaced by any number of elements, in the place it is in
+        sb.append("    public void replaceByAll(java.util.Collection<? extends ").append(T).append("> others) {\n");
+        sb.append("        if (parent == null)\n");
+        sb.append("            throw new RuntimeException(\"Node not attached to tree.\");\n");
+        sb.append("        if (parent instanceof AsgList) {\n");
+        sb.append("            if (!((AsgList<").append(T).append(">) parent).replaceExactByAll(this, others)) {\n");
+        sb.append("                throw new RuntimeException(\"Node not found in parent list.\");\n");
+        sb.append("            }\n");
+        sb.append("            return;\n");
+        sb.append("        }\n");
+        sb.append("        if (others.size() != 1) {\n");
+        sb.append("            throw new RuntimeException(\"An element which is not in a list can be replaced by exactly one element, not by \" + others.size());\n");
+        sb.append("        }\n");
+        sb.append("        replaceBy(others.iterator().next());\n");
+        sb.append("    }\n\n");
     }
 
 
@@ -1218,6 +1234,8 @@ public class Generator {
                 .append("    default void trimToSize() { for (int i = 0, n = size(); i < n; i++) get(i).trimToSize(); }\n")
                 .append("    void setParent(").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" parent);\n")
                 .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
+                .append("    /** Replaces this element, in the list it is in, by the given elements in order (none removes it). */\n")
+                .append("    void replaceByAll(java.util.Collection<? extends ").append(getCommonSupertypeType()).append("> others);\n")
                 .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
                 .append("    default java.util.List<Integer> pathTo(").append(getCommonSupertypeType()).append("  elem) {\n")
                 .append("        java.util.List<Integer> path = new java.util.ArrayList<>();\n")

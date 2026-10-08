@@ -60,6 +60,8 @@ tasks.register('generateTestAsts') {
     dependsOn 'compileJava'
 
     inputs.files(testParseqFiles)
+    // the generator itself: a change to its templates has to regenerate what the tests run against
+    inputs.files(sourceSets.main.runtimeClasspath)
     outputs.dir(testGenDir)
 
     doFirst {
