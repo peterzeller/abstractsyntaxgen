@@ -37,7 +37,10 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     @SuppressWarnings("unchecked")
     private T at(int index) { return (T) elems[index]; }
 
-    private void structureChanged() { modCount++; identityIndex = null; }
+    /** Called when the list changed: an element which counts the modifications of what is below it counts this one. */
+    protected void zzModified() {}
+
+    private void structureChanged() { modCount++; identityIndex = null; zzModified(); }
 
     private void buildIdentityIndex() {
         identityIndex = new IdentityHashMap<>(Math.max(4, size));
@@ -261,6 +264,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
             other_setParentToThis(e);
             elems[lastReturned] = e;
             identityIndex = null;
+            zzModified();
         }
         @Override public void add(T e) {
             checkForComodification();
@@ -335,6 +339,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         elems[index] = element;
         other_clearParent(old);
         identityIndex = null;
+        zzModified();
         return old;
     }
     @Override public void replaceAll(UnaryOperator<T> operator) {
@@ -436,6 +441,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
             identityIndex.remove(curr);
             identityIndex.put(newElem, index);
         }
+        zzModified();
         return true;
     }
 
