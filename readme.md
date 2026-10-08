@@ -332,6 +332,27 @@ var copy = program.copyWithRefs(); // Maintains reference integrity
 6. **Use `copyWithRefs()` for reference-heavy trees** - it maintains reference integrity
 7. **Use `Element.IterativeVisitor#traverse` for deeply nested or untrusted trees** - it avoids recursion limits
 
+## Performance
+
+What the generated code costs, and why it is built the way it is. `src/test/java/test/bench/AstBench.java` measures
+all of it (run its `main` on the test classes; it prints the heap per node and the time per node of a walk, a copy and
+a comparison):
+
+- **A list is an object with its own array.** It does not wrap an `ArrayList`, which was a second object per list and
+  a second load for each element. A list which is filled in one go gets an array of exactly its size; one which grows
+  one element at a time starts with room for three. A node of a tree costs about 28 bytes on Java 27 (compact object
+  headers), of which a list node is 32.
+- **`copy()` and `structuralEquals()` do not ask a node which type it is.** Each generated element copies and compares
+  itself (`zzCopy`, `zzStructuralEquals`), recursing for the first 256 levels; a tree which is deeper continues in an
+  iterative loop, so the depth of a tree is still not limited by the stack. This is about twice as fast as a search
+  for the type of each node, and it allocates nothing for a small tree.
+- **A `DefaultVisitor` which does not override a list's `visit` method visits the elements of the lists directly**,
+  from the element above them. It visits the same elements in the same order; a visitor which overrides the visit of
+  a list is told of every list, as before.
+- A walk over a tree is bound by memory, not by the dispatch: about 20 ns for each node of a tree which does not fit in the
+  cache, whether the walk is a visitor or a loop over `size()` and `get(i)`. The way to make it faster is a smaller tree
+  or fewer walks.
+
 
 ## Documentation
 

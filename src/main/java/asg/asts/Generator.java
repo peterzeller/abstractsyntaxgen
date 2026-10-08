@@ -885,6 +885,31 @@ public class Generator {
 
         // Default Visitor
         sb.append("    public static abstract class DefaultVisitor implements Visitor {\n");
+        if (!prog.listDefs.isEmpty()) {
+            // A list is a node of its own, so visiting an element with a list below it is two calls more for each list
+            // (to the list, which visits its elements), and most lists are empty or short. Unless the visitor looks at
+            // the lists, their elements are visited from the element above: the same visits, in the same order.
+            sb.append("        private static final ClassValue<Boolean> LIST_VISITS_OVERRIDDEN = new ClassValue<>() {\n");
+            sb.append("            @Override protected Boolean computeValue(Class<?> type) {\n");
+            sb.append("                for (Class<?> list : new Class<?>[] {");
+            boolean firstList = true;
+            for (ListDef l : prog.listDefs) {
+                if (!firstList) sb.append(", ");
+                sb.append(l.getName(typePrefix)).append(".class");
+                firstList = false;
+            }
+            sb.append("}) {\n");
+            sb.append("                    try {\n");
+            sb.append("                        if (type.getMethod(\"visit\", list).getDeclaringClass() != DefaultVisitor.class) return true;\n");
+            sb.append("                    } catch (NoSuchMethodException e) {\n");
+            sb.append("                        return true;\n");
+            sb.append("                    }\n");
+            sb.append("                }\n");
+            sb.append("                return false;\n");
+            sb.append("            }\n");
+            sb.append("        };\n");
+            sb.append("        private final boolean visitsLists = LIST_VISITS_OVERRIDDEN.get(getClass());\n");
+        }
         for (AstEntityDefinition contained : defs) {
             if (contained instanceof AstBaseTypeDefinition) {
                 AstBaseTypeDefinition c = (AstBaseTypeDefinition) contained;
@@ -894,7 +919,16 @@ public class Generator {
                     ConstructorDef cconst = (ConstructorDef) contained;
                     for (Parameter p : cconst.parameters) {
                         if (prog.hasElement(p.getTyp()) && !p.isRef) {
-                            sb.append("          " + toFirstLower(c.getName()) + ".get" + toFirstUpper(p.name) + "().accept(this);\n");
+                            String child = toFirstLower(c.getName()) + ".get" + toFirstUpper(p.name) + "()";
+                            if (prog.getElement(p.getTyp()) instanceof ListDef) {
+                                sb.append("          {\n");
+                                sb.append("              ").append(printType(p.getTyp())).append(" zzList = ").append(child).append(";\n");
+                                sb.append("              if (visitsLists) zzList.accept(this);\n");
+                                sb.append("              else for (int zzI = 0, zzN = zzList.size(); zzI < zzN; zzI++) zzList.get(zzI).accept(this);\n");
+                                sb.append("          }\n");
+                            } else {
+                                sb.append("          " + child + ".accept(this);\n");
+                            }
                         }
                     }
                 } else {

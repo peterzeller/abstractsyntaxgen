@@ -119,7 +119,7 @@ public class AstBench {
         }
 
         long bestBuild = Long.MAX_VALUE, bestWalk = Long.MAX_VALUE, bestCopy = Long.MAX_VALUE, bestSmallCopy = Long.MAX_VALUE,
-            bestEquals = Long.MAX_VALUE, bestLists = Long.MAX_VALUE;
+            bestEquals = Long.MAX_VALUE, bestLists = Long.MAX_VALUE, bestGeneric = Long.MAX_VALUE;
         long sink = 0;
         for (int round = 0; round < rounds; round++) {
             long t0 = System.nanoTime();
@@ -138,6 +138,13 @@ public class AstBench {
             }
             t1 = System.nanoTime();
             bestWalk = Math.min(bestWalk, t1 - t0);
+
+            t0 = System.nanoTime();
+            for (int rep = 0; rep < 24; rep++) {
+                sink += walkGeneric(program);
+            }
+            t1 = System.nanoTime();
+            bestGeneric = Math.min(bestGeneric, t1 - t0);
 
             t0 = System.nanoTime();
             TSProgram copy = program.copy();
@@ -169,11 +176,21 @@ public class AstBench {
         }
         System.out.printf("build %6.1f ms (%d nodes/4)%n", bestBuild / 1e6, nodeCount / 4);
         System.out.printf("walk  %6.1f ms for %d visits of the tree (%.1f ns per node and visit)%n", bestWalk / 1e6, 24, bestWalk / (24.0 * nodeCount));
+        System.out.printf("walk by size and get %6.1f ms for 24 walks (%.1f ns per node)%n", bestGeneric / 1e6, bestGeneric / (24.0 * nodeCount));
         System.out.printf("copy  %6.1f ms (%.1f ns per node)%n", bestCopy / 1e6, bestCopy / (double) nodeCount);
         System.out.printf("copy of %d small trees %6.1f ms (%.1f ns per node)%n", small.size(), bestSmallCopy / 1e6, bestSmallCopy / (double) smallNodes);
         System.out.printf("equals %6.1f ms (%.1f ns per node)%n", bestEquals / 1e6, bestEquals / (double) nodeCount);
         System.out.printf("lists %6.1f ms for 20 passes over the lists%n", bestLists / 1e6);
         if (sink == 42) System.out.println();
+    }
+
+    /** A walk without the visitor: two virtual calls per node (size and get), no double dispatch. */
+    static long walkGeneric(TSElement e) {
+        long n = 1;
+        for (int i = 0, c = e.size(); i < c; i++) {
+            n += walkGeneric(e.get(i));
+        }
+        return n;
     }
 
     static long sumLists(TSElement e) {

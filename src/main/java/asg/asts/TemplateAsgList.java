@@ -3,366 +3,505 @@ package asg.asts;
 public class TemplateAsgList {
 
 	public static void writeTo(StringBuilder sb, String commonSupertypeName) {
-		sb.append("import java.util.*;\n");
-		sb.append("\n");
-		sb.append("abstract class AsgList<T> implements List<T> {\n");
-		sb.append("    private ArrayList<T> list = new ArrayList<>();\n");
-		sb.append("    private IdentityHashMap<T, Integer> identityIndex;\n");
-		sb.append("\n");
-		sb.append("    abstract protected void other_setParentToThis(T t);\n");
-		sb.append("    abstract protected void other_clearParent(T t);\n");
-		sb.append("    private void invalidateIdentityIndex() { identityIndex = null; }\n");
-		sb.append("    private void buildIdentityIndex() {\n");
-		sb.append("        identityIndex = new IdentityHashMap<>(Math.max(4, list.size()));\n");
-		sb.append("        for (int i=0, n=list.size(); i<n; i++) identityIndex.put(list.get(i), i);\n");
-		sb.append("    }\n");
-		sb.append("    @SuppressWarnings(\"unchecked\")\n");
-		sb.append("    private ArrayList<T> prepareAll(Collection<? extends T> elements) {\n");
-		sb.append("        ArrayList<T> prepared = new ArrayList<>(elements.size());\n");
-		sb.append("        try {\n");
-		sb.append("            if (elements instanceof List<?>) {\n");
-		sb.append("                List<? extends T> source = (List<? extends T>) elements;\n");
-		sb.append("                for (int i=0, n=source.size(); i<n; i++) { T element = source.get(i); other_setParentToThis(element); prepared.add(element); }\n");
-		sb.append("            } else {\n");
-		sb.append("                for (T element : elements) { other_setParentToThis(element); prepared.add(element); }\n");
-		sb.append("            }\n");
-		sb.append("            return prepared;\n");
-		sb.append("        } catch (RuntimeException | Error failure) {\n");
-		sb.append("            for (int i=0, n=prepared.size(); i<n; i++) other_clearParent(prepared.get(i));\n");
-		sb.append("            throw failure;\n");
-		sb.append("        }\n");
-		sb.append("    }\n");
-		sb.append("    private Set<?> membershipSet(Collection<?> elements) {\n");
-		sb.append("        if (elements instanceof Set<?>) return (Set<?>) elements;\n");
-		sb.append("        HashSet<Object> result = new HashSet<>(Math.max(4, elements.size()));\n");
-		sb.append("        if (elements instanceof List<?>) {\n");
-		sb.append("            List<?> source = (List<?>) elements;\n");
-		sb.append("            for (int i=0, n=source.size(); i<n; i++) result.add(source.get(i));\n");
-		sb.append("        } else {\n");
-		sb.append("            result.addAll(elements);\n");
-		sb.append("        }\n");
-		sb.append("        return result;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    // -------- core add/remove ----------\n");
-		sb.append("    @Override public boolean add(T t) {\n");
-		sb.append("        other_setParentToThis(t);\n");
-		sb.append("        boolean changed = list.add(t);\n");
-		sb.append("        if (changed) invalidateIdentityIndex();\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("    public void addFront(T t) { add(0, t); }\n");
-		sb.append("\n");
-		sb.append("    public List<T> removeAll() {\n");
-		sb.append("        List<T> result = list;\n");
-		sb.append("        // transfer ownership (no copy); create a fresh backing list\n");
-		sb.append("        for (int i=0, n=result.size(); i<n; i++) {\n");
-		sb.append("            T t = result.get(i);\n");
-		sb.append("            other_clearParent(t);\n");
-		sb.append("        }\n");
-		sb.append("        list = new ArrayList<>(4);\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("        return result;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public void add(int index, T elem) {\n");
-		sb.append("        other_setParentToThis(elem);\n");
-		sb.append("        list.add(index, elem);\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public boolean addAll(Collection<? extends T> c) {\n");
-		sb.append("        if (c.isEmpty()) return false;\n");
-		sb.append("        list.ensureCapacity(list.size() + c.size());\n");
-		sb.append("        ArrayList<T> prepared = prepareAll(c);\n");
-		sb.append("        boolean changed;\n");
-		sb.append("        try { changed = list.addAll(prepared); }\n");
-		sb.append("        catch (RuntimeException | Error failure) { for (int i=0, n=prepared.size(); i<n; i++) other_clearParent(prepared.get(i)); throw failure; }\n");
-		sb.append("        if (changed) invalidateIdentityIndex();\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public boolean addAll(int pos, Collection<? extends T> c) {\n");
-		sb.append("        if (c.isEmpty()) return false;\n");
-		sb.append("        if (pos < 0 || pos > list.size()) throw new IndexOutOfBoundsException(pos);\n");
-		sb.append("        ArrayList<T> prepared = prepareAll(c);\n");
-		sb.append("        boolean changed;\n");
-		sb.append("        try { changed = list.addAll(pos, prepared); }\n");
-		sb.append("        catch (RuntimeException | Error failure) { for (int i=0, n=prepared.size(); i<n; i++) other_clearParent(prepared.get(i)); throw failure; }\n");
-		sb.append("        if (changed) invalidateIdentityIndex();\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public void clear() {\n");
-		sb.append("        for (int i=0, n=list.size(); i<n; i++) other_clearParent(list.get(i));\n");
-		sb.append("        list.clear();\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    // -------- queries ----------\n");
-		sb.append("    @Override public boolean contains(Object o) { return list.contains(o); }\n");
-		sb.append("    @Override public boolean containsAll(Collection<?> c) {\n");
-		sb.append("        if (c instanceof List<?>) {\n");
-		sb.append("            List<?> source = (List<?>) c;\n");
-		sb.append("            for (int i=0, n=source.size(); i<n; i++) if (!list.contains(source.get(i))) return false;\n");
-		sb.append("            return true;\n");
-		sb.append("        }\n");
-		sb.append("        return list.containsAll(c);\n");
-		sb.append("    }\n");
-		sb.append("    @Override public T get(int index) { return list.get(index); }\n");
-		sb.append("    @Override public int indexOf(Object o) { return list.indexOf(o); }\n");
-		sb.append("    @Override public boolean isEmpty() { return list.isEmpty(); }\n");
-		sb.append("    @Override public int lastIndexOf(Object o) { return list.lastIndexOf(o); }\n");
-		sb.append("    @Override public void forEach(java.util.function.Consumer<? super T> action) {\n");
-		sb.append("        java.util.Objects.requireNonNull(action);\n");
-		sb.append("        for (int i=0, n=list.size(); i<n; i++) action.accept(list.get(i));\n");
-		sb.append("    }\n");
-		sb.append("    @Override public Spliterator<T> spliterator() { return list.spliterator(); }\n");
-		sb.append("\n");
-		sb.append("    // -------- iterators (ensure remove() clears parent) ----------\n");
-		sb.append("    @Override public Iterator<T> iterator() {\n");
-		sb.append("        return listIterator();\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public ListIterator<T> listIterator(int index) { return new AsgListIterator(list.listIterator(index)); }\n");
-		sb.append("    @Override public ListIterator<T> listIterator() { return new AsgListIterator(list.listIterator()); }\n");
-		sb.append("\n");
-		sb.append("    class AsgListIterator implements ListIterator<T> {\n");
-		sb.append("        private final ListIterator<T> it;\n");
-		sb.append("        private T lastElement;\n");
-		sb.append("        AsgListIterator(ListIterator<T> it) { this.it = it; }\n");
-		sb.append("        @Override public void add(T e) { other_setParentToThis(e); it.add(e); invalidateIdentityIndex(); lastElement = null; }\n");
-		sb.append("        @Override public boolean hasNext() { return it.hasNext(); }\n");
-		sb.append("        @Override public boolean hasPrevious() { return it.hasPrevious(); }\n");
-		sb.append("        @Override public T next() { lastElement = it.next(); return lastElement; }\n");
-		sb.append("        @Override public int nextIndex() { return it.nextIndex(); }\n");
-		sb.append("        @Override public T previous() { lastElement = it.previous(); return lastElement; }\n");
-		sb.append("        @Override public int previousIndex() { return it.previousIndex(); }\n");
-		sb.append("        @Override public void remove() {\n");
-		sb.append("            if (lastElement == null) throw new IllegalStateException();\n");
-		sb.append("            other_clearParent(lastElement);\n");
-		sb.append("            it.remove();\n");
-		sb.append("            invalidateIdentityIndex();\n");
-		sb.append("            lastElement = null;\n");
-		sb.append("        }\n");
-		sb.append("        @Override public void set(T e) {\n");
-		sb.append("            if (lastElement == null) throw new IllegalStateException();\n");
-		sb.append("            other_clearParent(lastElement);\n");
-		sb.append("            other_setParentToThis(e);\n");
-		sb.append("            it.set(e);\n");
-		sb.append("            invalidateIdentityIndex();\n");
-		sb.append("            lastElement = e;\n");
-		sb.append("        }\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @SuppressWarnings(\"unchecked\")\n");
-		sb.append("    @Override public boolean remove(Object o) {\n");
-		sb.append("        int idx = list.indexOf(o);\n");
-		sb.append("        if (idx >= 0) { other_clearParent((T) list.remove(idx)); invalidateIdentityIndex(); return true; }\n");
-		sb.append("        return false;\n");
-		sb.append("    }\n");
-		sb.append("    @Override public T remove(int index) { T t = list.remove(index); other_clearParent(t); invalidateIdentityIndex(); return t; }\n");
-		sb.append("\n");
-		sb.append("    @Override public boolean removeAll(Collection<?> c) {\n");
-		sb.append("        if (c.isEmpty()) return false;\n");
-		sb.append("        final Set<?> set = membershipSet(c);\n");
-		sb.append("        boolean changed = false;\n");
-		sb.append("        for (int i=list.size()-1; i>=0; i--) {\n");
-		sb.append("            T t = list.get(i);\n");
-		sb.append("            if (set.contains(t)) { other_clearParent(t); list.remove(i); changed = true; }\n");
-		sb.append("        }\n");
-		sb.append("        if (changed) invalidateIdentityIndex();\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public boolean retainAll(Collection<?> c) {\n");
-		sb.append("        final Set<?> set = membershipSet(c);\n");
-		sb.append("        boolean changed = false;\n");
-		sb.append("        for (int i=list.size()-1; i>=0; i--) {\n");
-		sb.append("            T t = list.get(i);\n");
-		sb.append("            if (!set.contains(t)) { other_clearParent(t); list.remove(i); changed = true; }\n");
-		sb.append("        }\n");
-		sb.append("        if (changed) invalidateIdentityIndex();\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public T set(int index, T element) {\n");
-		sb.append("        T old = list.get(index);\n");
-		sb.append("        if (old == element) return old;\n");
-		sb.append("        other_setParentToThis(element);\n");
-		sb.append("        list.set(index, element);\n");
-		sb.append("        other_clearParent(old);\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("        return old;\n");
-		sb.append("    }\n");
-		sb.append("    @Override public void replaceAll(java.util.function.UnaryOperator<T> operator) {\n");
-		sb.append("        java.util.Objects.requireNonNull(operator);\n");
-		sb.append("        for (int i=0, n=list.size(); i<n; i++) set(i, operator.apply(list.get(i)));\n");
-		sb.append("    }\n");
-		sb.append("    @Override public boolean removeIf(java.util.function.Predicate<? super T> filter) {\n");
-		sb.append("        java.util.Objects.requireNonNull(filter);\n");
-		sb.append("        boolean changed = false;\n");
-		sb.append("        try {\n");
-		sb.append("            for (int i=0; i<list.size();) {\n");
-		sb.append("                T element = list.get(i);\n");
-		sb.append("                if (filter.test(element)) { other_clearParent(element); list.remove(i); changed = true; }\n");
-		sb.append("                else i++;\n");
-		sb.append("            }\n");
-		sb.append("        } finally { if (changed) invalidateIdentityIndex(); }\n");
-		sb.append("        return changed;\n");
-		sb.append("    }\n");
-		sb.append("    @Override public void sort(Comparator<? super T> comparator) { list.sort(comparator); invalidateIdentityIndex(); }\n");
-		sb.append("\n");
-		sb.append("    @Override public int size() { return list.size(); }\n");
-		sb.append("    void ensureCapacity(int capacity) { list.ensureCapacity(capacity); }\n");
-		sb.append("\n");
-		sb.append("    // Ensure subList keeps parent bookkeeping\n");
-		sb.append("    @Override public List<T> subList(int fromIndex, int toIndex) {\n");
-		sb.append("        final List<T> view = list.subList(fromIndex, toIndex);\n");
-		sb.append("        final AsgList<T> self = this;\n");
-		sb.append("        return new AbstractList<T>() {\n");
-		sb.append("            @Override public T get(int index) { return view.get(index); }\n");
-		sb.append("            @Override public int size() { return view.size(); }\n");
-		sb.append("            @Override public void forEach(java.util.function.Consumer<? super T> action) {\n");
-		sb.append("                java.util.Objects.requireNonNull(action);\n");
-		sb.append("                for (int i=0, n=view.size(); i<n; i++) action.accept(view.get(i));\n");
-		sb.append("            }\n");
-		sb.append("            @Override public Spliterator<T> spliterator() { return view.spliterator(); }\n");
-		sb.append("            @Override public void add(int index, T element) { self.other_setParentToThis(element); view.add(index, element); self.invalidateIdentityIndex(); }\n");
-		sb.append("            @Override public T set(int index, T element) {\n");
-		sb.append("                T old = view.get(index);\n");
-		sb.append("                if (old == element) return old;\n");
-		sb.append("                self.other_setParentToThis(element);\n");
-		sb.append("                T r = view.set(index, element);\n");
-		sb.append("                self.other_clearParent(r);\n");
-		sb.append("                self.invalidateIdentityIndex();\n");
-		sb.append("                return r;\n");
-		sb.append("            }\n");
-		sb.append("            @Override public T remove(int index) {\n");
-		sb.append("                T r = view.remove(index);\n");
-		sb.append("                self.other_clearParent(r);\n");
-		sb.append("                self.invalidateIdentityIndex();\n");
-		sb.append("                return r;\n");
-		sb.append("            }\n");
-		sb.append("            @Override public Iterator<T> iterator() { return listIterator(); }\n");
-		sb.append("            @Override public ListIterator<T> listIterator(int index) {\n");
-		sb.append("                ListIterator<T> it = view.listIterator(index);\n");
-		sb.append("                return new ListIterator<T>() {\n");
-		sb.append("                    T last;\n");
-		sb.append("                    @Override public boolean hasNext() { return it.hasNext(); }\n");
-		sb.append("                    @Override public T next() { return last = it.next(); }\n");
-		sb.append("                    @Override public boolean hasPrevious() { return it.hasPrevious(); }\n");
-		sb.append("                    @Override public T previous() { return last = it.previous(); }\n");
-		sb.append("                    @Override public int nextIndex() { return it.nextIndex(); }\n");
-		sb.append("                    @Override public int previousIndex() { return it.previousIndex(); }\n");
-		sb.append("                    @Override public void remove() { if (last==null) throw new IllegalStateException(); self.other_clearParent(last); it.remove(); self.invalidateIdentityIndex(); last = null; }\n");
-		sb.append("                    @Override public void set(T e) { if (last==null) throw new IllegalStateException(); self.other_clearParent(last); self.other_setParentToThis(e); it.set(e); self.invalidateIdentityIndex(); last = e; }\n");
-		sb.append("                    @Override public void add(T e) { self.other_setParentToThis(e); it.add(e); self.invalidateIdentityIndex(); last = null; }\n");
-		sb.append("                };\n");
-		sb.append("            }\n");
-		sb.append("        };\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @Override public Object[] toArray() { return list.toArray(); }\n");
-		sb.append("    @Override public <S> S[] toArray(S[] a) { return list.toArray(a); }\n");
-		sb.append("\n");
-		sb.append("    // ---------- tree utilities ----------\n");
-		sb.append("    public boolean structuralEquals(").append(commonSupertypeName).append(" e) {\n");
-		sb.append("        if (e instanceof AsgList) {\n");
-		sb.append("            AsgList<?> o = (AsgList<?>) e;\n");
-		sb.append("            int n = size(); if (o.size() != n) return false;\n");
-		sb.append("            for (int i=0; i<n; i++) {\n");
-		sb.append("                ").append(commonSupertypeName).append(" a = (").append(commonSupertypeName).append(") get(i);\n");
-		sb.append("                ").append(commonSupertypeName).append(" b = (").append(commonSupertypeName).append(") o.get(i);\n");
-		sb.append("                if (!a.structuralEquals(b)) return false;\n");
-		sb.append("            }\n");
-		sb.append("            return true;\n");
-		sb.append("        }\n");
-		sb.append("        return false;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    @SuppressWarnings({\"unchecked\",\"rawtypes\"})\n");
-		sb.append("    public void forEachElement(java.util.function.Consumer<? super ").append(commonSupertypeName).append("> action) {\n");
-		sb.append("        java.util.function.Consumer rawAction = (java.util.function.Consumer) action;\n");
-		sb.append("        for (int i=0, n=list.size(); i<n; i++) rawAction.accept(list.get(i));\n");
-		sb.append("    }\n");
-		sb.append("    public void trimToSize() { list.trimToSize(); }\n");
-		sb.append("\n");
-		sb.append("    /** replace first occurrence by identity (==) */\n");
-		sb.append("    public boolean replaceExact(Object oldElem, T newElem) {\n");
-		sb.append("        if (identityIndex == null) buildIdentityIndex();\n");
-		sb.append("        Integer index = identityIndex.get(oldElem);\n");
-		sb.append("        if (index == null || list.get(index) != oldElem) return false;\n");
-		sb.append("        T curr = list.get(index);\n");
-		sb.append("        if (curr == newElem) return true;\n");
-		sb.append("        other_setParentToThis(newElem);\n");
-		sb.append("        list.set(index, newElem);\n");
-		sb.append("        if (curr != null) other_clearParent(curr);\n");
-		sb.append("        identityIndex.remove(curr);\n");
-		sb.append("        identityIndex.put(newElem, index);\n");
-		sb.append("        return true;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    /**\n");
-		sb.append("     * Replaces the first occurrence by identity (==) by the given elements, in order. No element removes it.\n");
-		sb.append("     * The new elements must not be in a tree, and none of them may be the element they replace. Nothing\n");
-		sb.append("     * changes when that fails. Returns false when the element is not in the list.\n");
-		sb.append("     */\n");
-		sb.append("    public boolean replaceExactByAll(Object oldElem, Collection<? extends T> newElems) {\n");
-		sb.append("        if (newElems.size() == 1) {\n");
-		sb.append("            // the index stays valid\n");
-		sb.append("            return replaceExact(oldElem, newElems.iterator().next());\n");
-		sb.append("        }\n");
-		sb.append("        if (identityIndex == null) buildIdentityIndex();\n");
-		sb.append("        Integer index = identityIndex.get(oldElem);\n");
-		sb.append("        if (index == null || list.get(index) != oldElem) return false;\n");
-		sb.append("        T curr = list.get(index);\n");
-		sb.append("        ArrayList<T> prepared = prepareAll(newElems);\n");
-		sb.append("        list.remove(index.intValue());\n");
-		sb.append("        list.addAll(index, prepared);\n");
-		sb.append("        other_clearParent(curr);\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("        return true;\n");
-		sb.append("    }\n");
-		sb.append("\n");
-		sb.append("    /**\n");
-		sb.append("     * Replaces each element which is a key of the map by the elements of its value, in order, in one pass over\n");
-		sb.append("     * the list however many elements are replaced (replacing them one by one is a pass each). An empty value\n");
-		sb.append("     * removes the element; the values must not be null. The keys are looked up as the map compares them, so\n");
-		sb.append("     * pass an IdentityHashMap to replace by identity. The new elements must not be in a tree, and none of them\n");
-		sb.append("     * may be the element they replace. Nothing changes when that fails. Returns the number of elements replaced.\n");
-		sb.append("     */\n");
-		sb.append("    public int replaceEach(Map<?, ? extends Collection<? extends T>> replacements) {\n");
-		sb.append("        if (replacements.isEmpty() || list.isEmpty()) return 0;\n");
-		sb.append("        ArrayList<T> result = null;\n");
-		sb.append("        ArrayList<T> replaced = new ArrayList<>();\n");
-		sb.append("        ArrayList<T> prepared = new ArrayList<>();\n");
-		sb.append("        try {\n");
-		sb.append("            for (int i=0, n=list.size(); i<n; i++) {\n");
-		sb.append("                T element = list.get(i);\n");
-		sb.append("                Collection<? extends T> by = replacements.get(element);\n");
-		sb.append("                if (by == null) {\n");
-		sb.append("                    if (result != null) result.add(element);\n");
-		sb.append("                    continue;\n");
-		sb.append("                }\n");
-		sb.append("                if (result == null) {\n");
-		sb.append("                    result = new ArrayList<>(n + by.size());\n");
-		sb.append("                    for (int j=0; j<i; j++) result.add(list.get(j));\n");
-		sb.append("                }\n");
-		sb.append("                replaced.add(element);\n");
-		sb.append("                for (T added : by) { other_setParentToThis(added); prepared.add(added); result.add(added); }\n");
-		sb.append("            }\n");
-		sb.append("        } catch (RuntimeException | Error failure) {\n");
-		sb.append("            for (int i=0, n=prepared.size(); i<n; i++) other_clearParent(prepared.get(i));\n");
-		sb.append("            throw failure;\n");
-		sb.append("        }\n");
-		sb.append("        if (result == null) return 0;\n");
-		sb.append("        for (int i=0, n=replaced.size(); i<n; i++) other_clearParent(replaced.get(i));\n");
-		sb.append("        list = result;\n");
-		sb.append("        invalidateIdentityIndex();\n");
-		sb.append("        return replaced.size();\n");
-		sb.append("    }\n");
-		sb.append("}\n");
+		sb.append(SOURCE.replace("$ELEMENT$", commonSupertypeName));
 	}
+
+	/**
+	 * The list of the children of an element, with the bookkeeping of their parents.
+	 * <p>
+	 * It keeps its elements in an array of its own. It used to wrap an ArrayList, which is a second object for every list
+	 * (a tree has a list for the arguments of each call, most of them short), a second load to read an element, and an
+	 * array of ten for the first element.
+	 */
+	private static final String SOURCE = """
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+
+abstract class AsgList<T> implements List<T>, RandomAccess {
+    private static final Object[] NO_ELEMENTS = {};
+    /** Up to this many elements, an element is found by looking at all of them, which is faster than an index. */
+    private static final int SCAN_LIMIT = 16;
+
+    /** The elements, the first size of them. An empty list shares the empty array until it gets an element. */
+    private Object[] elems = NO_ELEMENTS;
+    private int size;
+    /** The number of structural changes, which the iterators check. */
+    private int modCount;
+    private IdentityHashMap<T, Integer> identityIndex;
+
+    abstract protected void other_setParentToThis(T t);
+    abstract protected void other_clearParent(T t);
+
+    @SuppressWarnings("unchecked")
+    private T at(int index) { return (T) elems[index]; }
+
+    private void structureChanged() { modCount++; identityIndex = null; }
+
+    private void buildIdentityIndex() {
+        identityIndex = new IdentityHashMap<>(Math.max(4, size));
+        for (int i=0, n=size; i<n; i++) identityIndex.put(at(i), i);
+    }
+
+    /** The position of the element, compared by identity, or -1. */
+    private int identityIndexOf(Object element) {
+        int n = size;
+        if (n <= SCAN_LIMIT) {
+            for (int i=0; i<n; i++) if (elems[i] == element) return i;
+            return -1;
+        }
+        if (identityIndex == null) buildIdentityIndex();
+        Integer index = identityIndex.get(element);
+        if (index == null || index >= n || elems[index] != element) return -1;
+        return index;
+    }
+
+    // -------- capacity ----------
+    private void grow(int minCapacity) {
+        int old = elems.length;
+        elems = Arrays.copyOf(elems, Math.max(minCapacity, Math.max(3, old + (old >> 1))));
+    }
+    /** Room for that many more elements. A list which is filled in one go gets the room it needs and no more. */
+    private void reserve(int additional) {
+        int needed = size + additional;
+        if (needed > elems.length) {
+            if (size == 0) elems = new Object[needed]; else grow(needed);
+        }
+    }
+    void ensureCapacity(int capacity) {
+        if (capacity > elems.length) elems = Arrays.copyOf(elems, capacity);
+    }
+    public void trimToSize() {
+        if (size < elems.length) elems = size == 0 ? NO_ELEMENTS : Arrays.copyOf(elems, size);
+    }
+
+    /** Takes the elements as children, or none of them if one cannot be (it is in a tree already). */
+    @SuppressWarnings("unchecked")
+    private Object[] prepareAll(Collection<? extends T> elements) {
+        int n = elements.size();
+        Object[] prepared = new Object[n];
+        int done = 0;
+        try {
+            if (elements instanceof List<?>) {
+                List<? extends T> source = (List<? extends T>) elements;
+                for (; done < n; done++) { T element = source.get(done); other_setParentToThis(element); prepared[done] = element; }
+            } else {
+                for (T element : elements) {
+                    if (done == n) break;
+                    other_setParentToThis(element);
+                    prepared[done++] = element;
+                }
+            }
+            return prepared;
+        } catch (RuntimeException | Error failure) {
+            for (int i=0; i<done; i++) other_clearParent((T) prepared[i]);
+            throw failure;
+        }
+    }
+    private Set<?> membershipSet(Collection<?> elements) {
+        if (elements instanceof Set<?>) return (Set<?>) elements;
+        HashSet<Object> result = new HashSet<>(Math.max(4, elements.size()));
+        if (elements instanceof List<?>) {
+            List<?> source = (List<?>) elements;
+            for (int i=0, n=source.size(); i<n; i++) result.add(source.get(i));
+        } else {
+            result.addAll(elements);
+        }
+        return result;
+    }
+
+    // -------- core add/remove ----------
+    @Override public boolean add(T t) {
+        other_setParentToThis(t);
+        if (size == elems.length) grow(size + 1);
+        elems[size++] = t;
+        structureChanged();
+        return true;
+    }
+    public void addFront(T t) { add(0, t); }
+
+    public List<T> removeAll() {
+        ArrayList<T> result = new ArrayList<>(Math.max(size, 4));
+        for (int i=0, n=size; i<n; i++) {
+            T t = at(i);
+            other_clearParent(t);
+            result.add(t);
+        }
+        elems = NO_ELEMENTS;
+        size = 0;
+        structureChanged();
+        return result;
+    }
+
+    @Override public void add(int index, T elem) {
+        if (index < 0 || index > size) throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
+        other_setParentToThis(elem);
+        if (size == elems.length) grow(size + 1);
+        System.arraycopy(elems, index, elems, index + 1, size - index);
+        elems[index] = elem;
+        size++;
+        structureChanged();
+    }
+
+    @Override public boolean addAll(Collection<? extends T> c) {
+        return addAll(size, c);
+    }
+
+    @Override public boolean addAll(int pos, Collection<? extends T> c) {
+        if (pos < 0 || pos > size) throw new IndexOutOfBoundsException("Index: " + pos + ", Size: " + size);
+        if (c.isEmpty()) return false;
+        Object[] prepared = prepareAll(c);
+        int count = prepared.length;
+        reserve(count);
+        System.arraycopy(elems, pos, elems, pos + count, size - pos);
+        System.arraycopy(prepared, 0, elems, pos, count);
+        size += count;
+        structureChanged();
+        return true;
+    }
+
+    @Override public void clear() {
+        for (int i=0, n=size; i<n; i++) other_clearParent(at(i));
+        Arrays.fill(elems, 0, size, null);
+        size = 0;
+        structureChanged();
+    }
+
+    // -------- queries ----------
+    @Override public boolean contains(Object o) { return indexOf(o) >= 0; }
+    @Override public boolean containsAll(Collection<?> c) {
+        if (c instanceof List<?>) {
+            List<?> source = (List<?>) c;
+            for (int i=0, n=source.size(); i<n; i++) if (!contains(source.get(i))) return false;
+            return true;
+        }
+        for (Object o : c) if (!contains(o)) return false;
+        return true;
+    }
+    @Override public T get(int index) {
+        Objects.checkIndex(index, size);
+        return at(index);
+    }
+    @Override public int indexOf(Object o) {
+        if (o == null) {
+            for (int i=0, n=size; i<n; i++) if (elems[i] == null) return i;
+        } else {
+            for (int i=0, n=size; i<n; i++) if (o.equals(elems[i])) return i;
+        }
+        return -1;
+    }
+    @Override public boolean isEmpty() { return size == 0; }
+    @Override public int lastIndexOf(Object o) {
+        if (o == null) {
+            for (int i=size-1; i>=0; i--) if (elems[i] == null) return i;
+        } else {
+            for (int i=size-1; i>=0; i--) if (o.equals(elems[i])) return i;
+        }
+        return -1;
+    }
+    @Override public void forEach(Consumer<? super T> action) {
+        Objects.requireNonNull(action);
+        for (int i=0, n=size; i<n; i++) action.accept(get(i));
+    }
+    @SuppressWarnings("unchecked")
+    @Override public Spliterator<T> spliterator() { return Arrays.spliterator((T[]) elems, 0, size); }
+
+    // -------- iterators (remove() and set() keep the parents right) ----------
+    @Override public Iterator<T> iterator() {
+        return new AsgListIterator(0);
+    }
+
+    @Override public ListIterator<T> listIterator(int index) {
+        if (index < 0 || index > size) throw new IndexOutOfBoundsException("Index: " + index);
+        return new AsgListIterator(index);
+    }
+    @Override public ListIterator<T> listIterator() { return new AsgListIterator(0); }
+
+    final class AsgListIterator implements ListIterator<T> {
+        private int cursor;
+        private int lastReturned = -1;
+        private int expectedModCount = modCount;
+        AsgListIterator(int index) { cursor = index; }
+        private void checkForComodification() {
+            if (modCount != expectedModCount) throw new ConcurrentModificationException();
+        }
+        @Override public boolean hasNext() { return cursor != size; }
+        @Override public T next() {
+            checkForComodification();
+            int i = cursor;
+            if (i >= size) throw new NoSuchElementException();
+            cursor = i + 1;
+            lastReturned = i;
+            return at(i);
+        }
+        @Override public boolean hasPrevious() { return cursor != 0; }
+        @Override public T previous() {
+            checkForComodification();
+            int i = cursor - 1;
+            if (i < 0) throw new NoSuchElementException();
+            cursor = i;
+            lastReturned = i;
+            return at(i);
+        }
+        @Override public int nextIndex() { return cursor; }
+        @Override public int previousIndex() { return cursor - 1; }
+        @Override public void remove() {
+            if (lastReturned < 0) throw new IllegalStateException();
+            checkForComodification();
+            AsgList.this.remove(lastReturned);
+            cursor = lastReturned;
+            lastReturned = -1;
+            expectedModCount = modCount;
+        }
+        @Override public void set(T e) {
+            if (lastReturned < 0) throw new IllegalStateException();
+            checkForComodification();
+            other_clearParent(at(lastReturned));
+            other_setParentToThis(e);
+            elems[lastReturned] = e;
+            identityIndex = null;
+        }
+        @Override public void add(T e) {
+            checkForComodification();
+            int i = cursor;
+            AsgList.this.add(i, e);
+            cursor = i + 1;
+            lastReturned = -1;
+            expectedModCount = modCount;
+        }
+    }
+
+    @Override public boolean remove(Object o) {
+        int index = indexOf(o);
+        if (index < 0) return false;
+        remove(index);
+        return true;
+    }
+    @Override public T remove(int index) {
+        Objects.checkIndex(index, size);
+        T t = at(index);
+        int tail = size - index - 1;
+        if (tail > 0) System.arraycopy(elems, index + 1, elems, index, tail);
+        elems[--size] = null;
+        other_clearParent(t);
+        structureChanged();
+        return t;
+    }
+
+    /** Removes the elements which the filter accepts, in one pass. A filter which throws leaves the list as it was. */
+    private boolean removeMatching(Predicate<? super T> filter) {
+        int n = size;
+        BitSet gone = null;
+        for (int i=0; i<n; i++) {
+            if (filter.test(at(i))) {
+                if (gone == null) gone = new BitSet(n);
+                gone.set(i);
+            }
+        }
+        if (gone == null) return false;
+        int kept = 0;
+        for (int i=0; i<n; i++) {
+            T t = at(i);
+            if (gone.get(i)) other_clearParent(t); else elems[kept++] = t;
+        }
+        Arrays.fill(elems, kept, n, null);
+        size = kept;
+        structureChanged();
+        return true;
+    }
+
+    @Override public boolean removeAll(Collection<?> c) {
+        if (c.isEmpty()) return false;
+        final Set<?> set = membershipSet(c);
+        return removeMatching(t -> set.contains(t));
+    }
+
+    @Override public boolean retainAll(Collection<?> c) {
+        final Set<?> set = membershipSet(c);
+        return removeMatching(t -> !set.contains(t));
+    }
+
+    @Override public boolean removeIf(Predicate<? super T> filter) {
+        Objects.requireNonNull(filter);
+        return removeMatching(filter);
+    }
+
+    @Override public T set(int index, T element) {
+        Objects.checkIndex(index, size);
+        T old = at(index);
+        if (old == element) return old;
+        other_setParentToThis(element);
+        elems[index] = element;
+        other_clearParent(old);
+        identityIndex = null;
+        return old;
+    }
+    @Override public void replaceAll(UnaryOperator<T> operator) {
+        Objects.requireNonNull(operator);
+        for (int i=0, n=size; i<n; i++) set(i, operator.apply(at(i)));
+    }
+    @SuppressWarnings("unchecked")
+    @Override public void sort(Comparator<? super T> comparator) {
+        Arrays.sort((T[]) elems, 0, size, comparator);
+        structureChanged();
+    }
+
+    @Override public int size() { return size; }
+
+    // The part of the list which subList returns keeps the parents right through the list itself
+    @Override public List<T> subList(int fromIndex, int toIndex) {
+        Objects.checkFromToIndex(fromIndex, toIndex, size);
+        return new SubList(fromIndex, toIndex - fromIndex);
+    }
+
+    private final class SubList extends AbstractList<T> implements RandomAccess {
+        private final int offset;
+        private int length;
+        private int expectedModCount = AsgList.this.modCount;
+        SubList(int offset, int length) { this.offset = offset; this.length = length; }
+        private void check() {
+            if (AsgList.this.modCount != expectedModCount) throw new ConcurrentModificationException();
+        }
+        @Override public T get(int index) {
+            Objects.checkIndex(index, length);
+            check();
+            return at(offset + index);
+        }
+        @Override public int size() { check(); return length; }
+        @Override public T set(int index, T element) {
+            Objects.checkIndex(index, length);
+            check();
+            return AsgList.this.set(offset + index, element);
+        }
+        @Override public void add(int index, T element) {
+            if (index < 0 || index > length) throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + length);
+            check();
+            AsgList.this.add(offset + index, element);
+            length++;
+            expectedModCount = AsgList.this.modCount;
+            this.modCount++;
+        }
+        @Override public T remove(int index) {
+            Objects.checkIndex(index, length);
+            check();
+            T removed = AsgList.this.remove(offset + index);
+            length--;
+            expectedModCount = AsgList.this.modCount;
+            this.modCount++;
+            return removed;
+        }
+    }
+
+    @Override public Object[] toArray() { return Arrays.copyOf(elems, size); }
+    @SuppressWarnings("unchecked")
+    @Override public <S> S[] toArray(S[] a) {
+        if (a.length < size) return (S[]) Arrays.copyOf(elems, size, a.getClass());
+        System.arraycopy(elems, 0, a, 0, size);
+        if (a.length > size) a[size] = null;
+        return a;
+    }
+
+    // ---------- tree utilities ----------
+    public boolean structuralEquals($ELEMENT$ e) {
+        if (e instanceof AsgList) {
+            AsgList<?> o = (AsgList<?>) e;
+            int n = size; if (o.size != n) return false;
+            for (int i=0; i<n; i++) {
+                $ELEMENT$ a = ($ELEMENT$) elems[i];
+                $ELEMENT$ b = ($ELEMENT$) o.elems[i];
+                if (!a.structuralEquals(b)) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @SuppressWarnings({"unchecked","rawtypes"})
+    public void forEachElement(Consumer<? super $ELEMENT$> action) {
+        Consumer rawAction = (Consumer) action;
+        for (int i=0, n=size; i<n; i++) rawAction.accept(elems[i]);
+    }
+
+    /** replace first occurrence by identity (==) */
+    public boolean replaceExact(Object oldElem, T newElem) {
+        int index = identityIndexOf(oldElem);
+        if (index < 0) return false;
+        T curr = at(index);
+        if (curr == newElem) return true;
+        other_setParentToThis(newElem);
+        elems[index] = newElem;
+        if (curr != null) other_clearParent(curr);
+        if (identityIndex != null) {
+            identityIndex.remove(curr);
+            identityIndex.put(newElem, index);
+        }
+        return true;
+    }
+
+    /**
+     * Replaces the first occurrence by identity (==) by the given elements, in order. No element removes it.
+     * The new elements must not be in a tree, and none of them may be the element they replace. Nothing
+     * changes when that fails. Returns false when the element is not in the list.
+     */
+    public boolean replaceExactByAll(Object oldElem, Collection<? extends T> newElems) {
+        if (newElems.size() == 1) {
+            return replaceExact(oldElem, newElems.iterator().next());
+        }
+        int index = identityIndexOf(oldElem);
+        if (index < 0) return false;
+        T curr = at(index);
+        Object[] prepared = prepareAll(newElems);
+        int count = prepared.length;
+        if (count > 1) reserve(count - 1);
+        System.arraycopy(elems, index + 1, elems, index + count, size - index - 1);
+        System.arraycopy(prepared, 0, elems, index, count);
+        size += count - 1;
+        if (count == 0) elems[size] = null;
+        other_clearParent(curr);
+        structureChanged();
+        return true;
+    }
+
+    /**
+     * Replaces each element which is a key of the map by the elements of its value, in order, in one pass over
+     * the list however many elements are replaced (replacing them one by one is a pass each). An empty value
+     * removes the element; the values must not be null. The keys are looked up as the map compares them, so
+     * pass an IdentityHashMap to replace by identity. The new elements must not be in a tree, and none of them
+     * may be the element they replace. Nothing changes when that fails. Returns the number of elements replaced.
+     */
+    public int replaceEach(Map<?, ? extends Collection<? extends T>> replacements) {
+        if (replacements.isEmpty() || size == 0) return 0;
+        ArrayList<T> result = null;
+        ArrayList<T> replaced = new ArrayList<>();
+        ArrayList<T> prepared = new ArrayList<>();
+        try {
+            for (int i=0, n=size; i<n; i++) {
+                T element = at(i);
+                Collection<? extends T> by = replacements.get(element);
+                if (by == null) {
+                    if (result != null) result.add(element);
+                    continue;
+                }
+                if (result == null) {
+                    result = new ArrayList<>(n + by.size());
+                    for (int j=0; j<i; j++) result.add(at(j));
+                }
+                replaced.add(element);
+                for (T added : by) { other_setParentToThis(added); prepared.add(added); result.add(added); }
+            }
+        } catch (RuntimeException | Error failure) {
+            for (int i=0, n=prepared.size(); i<n; i++) other_clearParent(prepared.get(i));
+            throw failure;
+        }
+        if (result == null) return 0;
+        for (int i=0, n=replaced.size(); i<n; i++) other_clearParent(replaced.get(i));
+        elems = result.toArray();
+        size = elems.length;
+        structureChanged();
+        return replaced.size();
+    }
+}
+""";
 
 }
