@@ -321,9 +321,45 @@ public class Generator {
     }
 
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
+        String treeUtil = getTreeUtilType();
         sb.append("    public boolean structuralEquals(" + getCommonSupertypeType() + " e) {\n");
-        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
+        sb.append("        return zzStructuralEquals(e, 0);\n");
+        sb.append("    }\n\n");
+        // recursive, as far as the depth allows: one virtual call per node. Deeper trees continue iteratively.
+        sb.append("    @Override public boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" e, int depth) {\n");
+        sb.append("        if (this == e) return true;\n");
+        sb.append("        if (!(e instanceof ").append(c.getName(typePrefix)).append(" target)) return false;\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return ").append(treeUtil).append(".structuralEquals(this, e);\n");
+        for (String comparison : fieldComparisons(c, "this.", "target.")) {
+            sb.append("        if (!(").append(comparison).append(")) return false;\n");
+        }
+        for (Parameter p : c.parameters) {
+            if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                sb.append("        if (!this.").append(p.name).append(".zzStructuralEquals(target.get").append(toFirstUpper(p.name))
+                        .append("(), depth + 1)) return false;\n");
+            }
+        }
+        sb.append("        return true;\n");
         sb.append("    }\n");
+    }
+
+    /**
+     * What makes two elements of this constructor equal besides their children: the values of the parameters which take
+     * part in the equality, and the identity of the references.
+     */
+    private List<String> fieldComparisons(ConstructorDef c, String leftPrefix, String rightPrefix) {
+        List<String> comparisons = new ArrayList<>();
+        for (Parameter p : c.parameters) {
+            if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
+            String leftExpr = leftPrefix + "get" + toFirstUpper(p.name) + "()";
+            String rightExpr = rightPrefix + "get" + toFirstUpper(p.name) + "()";
+            if (p.isRef && prog.hasElement(p.getTyp())) {
+                comparisons.add(leftExpr + " == " + rightExpr);
+            } else {
+                comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
+            }
+        }
+        return comparisons;
     }
 
     private void createFieldsImpl(AstBaseTypeDefinition c, StringBuilder sb) {
@@ -501,7 +537,7 @@ public class Generator {
 
     private void createShallowCopyMethod(ConstructorDef c, StringBuilder sb) {
         String implType = c.getName(typePrefix) + "Impl";
-        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
         for (Parameter p : c.parameters) {
             if (p.isRef || !prog.hasElement(p.getTyp())) {
@@ -684,9 +720,25 @@ public class Generator {
     }
 
     private void createCopyMethod(ConstructorDef c, StringBuilder sb) {
+        String implType = c.getName(typePrefix) + "Impl";
+        String treeUtil = getTreeUtilType();
         sb.append("    @Override public " + c.getName(typePrefix) + " copy() {\n");
-        sb.append("        return (").append(c.getName(typePrefix)).append(") ")
-                .append(getTreeUtilType()).append(".copy(this, false);\n");
+        sb.append("        return zzCopy(0);\n");
+        sb.append("    }\n\n");
+        // recursive, as far as the depth allows: no stack and no search for the type of each node. Deeper trees continue
+        // iteratively, so that the depth of a tree is not limited by the stack.
+        sb.append("    @Override public ").append(implType).append(" zzCopy(int depth) {\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return (").append(implType).append(") ")
+                .append(treeUtil).append(".copy(this, false);\n");
+        sb.append("        ").append(implType).append(" result = zzShallowCopy();\n");
+        for (Parameter p : c.parameters) {
+            if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                sb.append("        result.").append(p.name).append(" = (").append(printType(p.getTyp())).append(") this.")
+                        .append(p.name).append(".zzCopy(depth + 1);\n");
+                sb.append("        result.").append(p.name).append(".setParent(result);\n");
+            }
+        }
+        sb.append("        return result;\n");
         sb.append("    }\n\n");
     }
 
@@ -1102,8 +1154,35 @@ public class Generator {
         sb.append("    public " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement) {\n");
         sb.append("        return ((AsgList<" + printType(l.itemType) + ">) this).set(i, (" + printType(l.itemType) + ") newElement);\n");
         sb.append("    }\n\n");
+        String listType = l.getName(typePrefix);
+        String listImplType = listType + "Impl";
+        String treeUtil = getTreeUtilType();
         sb.append("    @Override public boolean structuralEquals(").append(getCommonSupertypeType()).append(" e) {\n");
-        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
+        sb.append("        return zzStructuralEquals(e, 0);\n");
+        sb.append("    }\n\n");
+        sb.append("    @Override public boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" e, int depth) {\n");
+        sb.append("        if (this == e) return true;\n");
+        sb.append("        if (!(e instanceof ").append(listType).append(" other)) return false;\n");
+        sb.append("        int n = size();\n");
+        sb.append("        if (other.size() != n) return false;\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return ").append(treeUtil).append(".structuralEquals(this, e);\n");
+        sb.append("        for (int i = 0; i < n; i++) {\n");
+        sb.append("            if (!get(i).zzStructuralEquals(other.get(i), depth + 1)) return false;\n");
+        sb.append("        }\n");
+        sb.append("        return true;\n");
+        sb.append("    }\n\n");
+
+        // recursive copy, as far as the depth allows (see the copy of the constructors)
+        sb.append("    @Override public ").append(listImplType).append(" zzCopy(int depth) {\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return (").append(listImplType).append(") ")
+                .append(treeUtil).append(".copy(this, false);\n");
+        sb.append("        ").append(listImplType).append(" result = zzShallowCopy();\n");
+        sb.append("        int n = size();\n");
+        sb.append("        result.ensureCapacity(n);\n");
+        sb.append("        for (int i = 0; i < n; i++) {\n");
+        sb.append("            result.add((").append(printType(l.itemType)).append(") get(i).zzCopy(depth + 1));\n");
+        sb.append("        }\n");
+        sb.append("        return result;\n");
         sb.append("    }\n\n");
 
         // match methods for switch
@@ -1156,8 +1235,7 @@ public class Generator {
         sb.append(" {\n");
 
         sb.append("    public ").append(l.getName(typePrefix)).append(" copy() {\n");
-        sb.append("        return (").append(l.getName(typePrefix)).append(") ")
-                .append(getTreeUtilType()).append(".copy(this, false);\n");
+        sb.append("        return (").append(l.getName(typePrefix)).append(") zzCopy(0);\n");
         sb.append("    }\n\n");
 
         createCopyWithRefsMethod(l, sb);
@@ -1170,7 +1248,7 @@ public class Generator {
 
     private void createShallowCopyMethod(ListDef l, StringBuilder sb) {
         String implType = l.getName(typePrefix) + "Impl";
-        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(l, field)) {
@@ -1236,6 +1314,12 @@ public class Generator {
                 .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
                 .append("    /** Replaces this element, in the list it is in, by the given elements in order (none removes it). */\n")
                 .append("    void replaceByAll(java.util.Collection<? extends ").append(getCommonSupertypeType()).append("> others);\n")
+                .append("    /** Internal, for the generated copy: this element without its children. */\n")
+                .append("    default ").append(getCommonSupertypeType()).append(" zzShallowCopy() { return null; }\n")
+                .append("    /** Internal, for the generated copy: this element and everything below it; depth is how far the recursion went. */\n")
+                .append("    default ").append(getCommonSupertypeType()).append(" zzCopy(int depth) { return copy(); }\n")
+                .append("    /** Internal, for the generated comparison: structuralEquals; depth is how far the recursion went. */\n")
+                .append("    default boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" other, int depth) { return structuralEquals(other); }\n")
                 .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
                 .append("    default java.util.List<Integer> pathTo(").append(getCommonSupertypeType()).append("  elem) {\n")
                 .append("        java.util.List<Integer> path = new java.util.ArrayList<>();\n")
@@ -1302,6 +1386,12 @@ public class Generator {
         sb.append("@SuppressWarnings({\"rawtypes\", \"unchecked\"})\n");
         sb.append("final class ").append(getTreeUtilType()).append(" {\n");
         sb.append("    private ").append(getTreeUtilType()).append("() {}\n\n");
+        sb.append("    /**\n");
+        sb.append("     * How deep the copy and the comparison of the elements recurse before they continue iteratively, which\n");
+        sb.append("     * is as fast and does not need the stack. Only the trees which are deeper than this use the loops below.\n");
+        sb.append("     */\n");
+        sb.append("    static final int MAX_DEPTH = 256;\n\n");
+        sb.append("    /** The iterative copy: of the trees which are too deep to recurse, and of a copy which keeps the references. */\n");
         sb.append("    static ").append(elementType).append(" copy(").append(elementType)
                 .append(" root, boolean withRefs) {\n");
         sb.append("        java.util.IdentityHashMap<").append(elementType).append(", ")
@@ -1312,7 +1402,7 @@ public class Generator {
                 .append("> originalStack = new java.util.ArrayDeque<>();\n");
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> copyStack = new java.util.ArrayDeque<>();\n");
-        sb.append("        ").append(elementType).append(" rootCopy = shallowCopy(root);\n");
+        sb.append("        ").append(elementType).append(" rootCopy = root.zzShallowCopy();\n");
         sb.append("        originalStack.push(root);\n");
         sb.append("        copyStack.push(rootCopy);\n");
         sb.append("        if (withRefs) { copies.put(root, rootCopy); originals.add(root); }\n");
@@ -1321,9 +1411,10 @@ public class Generator {
         sb.append("            ").append(elementType).append(" copy = copyStack.pop();\n");
         sb.append("            for (int i = 0, n = original.size(); i < n; i++) {\n");
         sb.append("                ").append(elementType).append(" child = original.get(i);\n");
-        sb.append("                boolean generatedChild = isGenerated(child);\n");
+        sb.append("                ").append(elementType).append(" childShallow = child.zzShallowCopy();\n");
+        sb.append("                boolean generatedChild = childShallow != null;\n");
         sb.append("                ").append(elementType)
-                .append(" childCopy = generatedChild ? shallowCopy(child) : ")
+                .append(" childCopy = generatedChild ? childShallow : ")
                 .append("(withRefs ? child.copyWithRefs() : child.copy());\n");
         sb.append("                if (copy instanceof AsgList list) list.add(childCopy);\n");
         sb.append("                else copy.set(i, childCopy);\n");
@@ -1359,10 +1450,6 @@ public class Generator {
         sb.append("        while (!leftStack.isEmpty()) {\n");
         sb.append("            ").append(elementType).append(" a = leftStack.pop();\n");
         sb.append("            ").append(elementType).append(" b = rightStack.pop();\n");
-        sb.append("            if (!isGenerated(a)) {\n");
-        sb.append("                if (!a.structuralEquals(b)) return false;\n");
-        sb.append("                continue;\n");
-        sb.append("            }\n");
         sb.append("            if (!localEquals(a, b)) return false;\n");
         sb.append("            int n = a.size();\n");
         sb.append("            if (b.size() != n) return false;\n");
@@ -1456,17 +1543,7 @@ public class Generator {
             String interfaceType = c.getName(typePrefix);
             sb.append("        if (left instanceof ").append(implType).append(" source) {\n");
             sb.append("            if (!(right instanceof ").append(interfaceType).append(" target)) return false;\n");
-            List<String> comparisons = new ArrayList<>();
-            for (Parameter p : c.parameters) {
-                if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
-                String leftExpr = "source.get" + toFirstUpper(p.name) + "()";
-                String rightExpr = "target.get" + toFirstUpper(p.name) + "()";
-                if (p.isRef && prog.hasElement(p.getTyp())) {
-                    comparisons.add(leftExpr + " == " + rightExpr);
-                } else {
-                    comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
-                }
-            }
+            List<String> comparisons = fieldComparisons(c, "source.", "target.");
             sb.append("            return ").append(comparisons.isEmpty()
                     ? "true" : String.join(" && ", comparisons)).append(";\n");
             sb.append("        }\n");
@@ -1476,29 +1553,6 @@ public class Generator {
             String interfaceType = l.getName(typePrefix);
             sb.append("        if (left instanceof ").append(implType)
                     .append(") return right instanceof ").append(interfaceType).append(";\n");
-        }
-        sb.append("        return false;\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static ").append(elementType).append(" shallowCopy(")
-                .append(elementType).append(" elem) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            String implType = c.getName(typePrefix) + "Impl";
-            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            String implType = l.getName(typePrefix) + "Impl";
-            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
-        }
-        sb.append("        throw new IllegalArgumentException(\"Unsupported AST implementation: \" + elem.getClass());\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static boolean isGenerated(").append(elementType).append(" elem) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            sb.append("        if (elem instanceof ").append(c.getName(typePrefix)).append("Impl) return true;\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            sb.append("        if (elem instanceof ").append(l.getName(typePrefix)).append("Impl) return true;\n");
         }
         sb.append("        return false;\n");
         sb.append("    }\n\n");
