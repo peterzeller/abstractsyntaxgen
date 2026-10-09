@@ -236,12 +236,10 @@ public class StmtTest {
                     var condition = (TSBoolLiteral) ifStmt.getCondition();
                     if (condition.getBoolValue()) {
                         // Move then branch (removes from original parent)
-                        var thenStmts = ifStmt.getThenBranch().removeAll();
-                        newStatements.addAll(thenStmts);
+                        newStatements.addAllMoved(ifStmt.getThenBranch());
                     } else {
                         // Move else branch (removes from original parent)
-                        var elseStmts = ifStmt.getElseBranch().removeAll();
-                        newStatements.addAll(elseStmts);
+                        newStatements.addAllMoved(ifStmt.getElseBranch());
                     }
                     continue;
                 }

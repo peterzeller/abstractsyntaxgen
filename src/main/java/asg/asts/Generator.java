@@ -56,6 +56,34 @@ public class Generator {
         return prog.countedTypes.contains(c.getName());
     }
 
+    /** Whether a counted constructor can own another counted constructor, through cases/lists/recursion. */
+    private boolean countedTypesCanNest() {
+        for (String counted : prog.countedTypes) {
+            var pending = new ArrayDeque<AstEntityDefinition>();
+            addOwnedTypes(pending, prog.getElement(counted));
+            var seen = new HashSet<AstEntityDefinition>();
+            while (!pending.isEmpty()) {
+                var type = pending.removeFirst();
+                if (!seen.add(type)) continue;
+                if (type instanceof ConstructorDef constructor && isCounted(constructor)) return true;
+                addOwnedTypes(pending, type);
+            }
+        }
+        return false;
+    }
+
+    private void addOwnedTypes(Deque<AstEntityDefinition> pending, AstEntityDefinition type) {
+        if (type instanceof ConstructorDef constructor) {
+            for (Parameter parameter : constructor.parameters) {
+                if (!parameter.isRef && prog.hasElement(parameter.getTyp())) pending.addLast(prog.getElement(parameter.getTyp()));
+            }
+        } else if (type instanceof ListDef list) {
+            if (!list.ref && prog.hasElement(list.itemType)) pending.addLast(prog.getElement(list.itemType));
+        } else if (type instanceof CaseDef cases) {
+            for (Alternative alternative : cases.alternatives) pending.addLast(prog.getElement(alternative.name));
+        }
+    }
+
     /** The line which counts a change of this element, which every setter ends with; none if nothing counts. */
     private String modifiedStatement() {
         return countsModifications() ? "        " + getTreeUtilType() + ".modified(this);\n" : "";
@@ -436,53 +464,90 @@ public class Generator {
     }
 
 
+    private List<AttributeDef> cachedAttributes(AstEntityDefinition c) {
+        List<AttributeDef> result = new ArrayList<>();
+        for (AttributeDef attr : prog.attrDefs) {
+            if (hasAttribute(c, attr) && attr.parameters == null) result.add(attr);
+        }
+        return result;
+    }
+
+    private String attributeStateType(int count, int word) {
+        int entries = Math.min(32, count - word * 32);
+        return entries <= 4 ? "byte" : entries <= 8 ? "short" : entries <= 16 ? "int" : "long";
+    }
+
+    private String attributeState(int count, int index) {
+        int word = index / 32, shift = (index % 32) * 2;
+        String suffix = attributeStateType(count, word).equals("long") ? "L" : "";
+        return "(int) ((zzattrStates" + word + " >>> " + shift + ") & 3" + suffix + ")";
+    }
+
+    private void setAttributeState(StringBuilder sb, String indent, int count, int index, int state) {
+        int word = index / 32, shift = (index % 32) * 2;
+        String field = "zzattrStates" + word;
+        String type = attributeStateType(count, word);
+        String suffix = type.equals("long") ? "L" : "";
+        String mask = "0x" + Long.toHexString(3L << shift) + suffix;
+        String value = "0x" + Long.toHexString((long) state << shift) + suffix;
+        String cast = type.equals("byte") || type.equals("short") ? "(" + type + ") " : "";
+        // Read the live word: evaluating an attribute can update other attributes in this same word.
+        sb.append(indent).append(field).append(" = ").append(cast).append("((").append(field)
+                .append(" & ~").append(mask).append(") | ").append(value).append(");\n");
+    }
+
     private void createAttributeImpl(AstBaseTypeDefinition c, StringBuilder sb) {
+        int count = cachedAttributes(c).size();
+        for (int word = 0; word * 32 < count; word++) {
+            sb.append("    private ").append(attributeStateType(count, word)).append(" zzattrStates").append(word).append(";\n");
+        }
+        int index = 0;
         for (AttributeDef attr : prog.attrDefs) {
 
             if (hasAttribute(c, attr)) {
                 if (attr.parameters == null) {
+                    int stateIndex = index++;
+                    String state = attributeState(count, stateIndex);
                     sb.append("// circular = ").append(attr.circular).append("\n");
                     if (attr.circular == null) {
                         // ---------- NON-CIRCULAR CACHED ATTRIBUTE ----------
                         // State: 0 = uncached, 1 = computing (cycle), 2 = cached
-                        sb.append("    private byte zzattr_").append(attr.attr).append("_state = 0;\n");
                         sb.append("    private ").append(attr.returns).append(" zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    /** ").append(attr.comment).append("*/\n");
                         sb.append("    public ").append(attr.returns).append(" ").append(attr.attr).append("() {\n");
-                        sb.append("        byte s = zzattr_").append(attr.attr).append("_state;\n");
+                        sb.append("        int s = ").append(state).append(";\n");
                         sb.append("        if (s == 2) return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("        if (s == 1) throw new CyclicDependencyError(this, \"").append(attr.attr).append("\");\n");
-                        sb.append("        zzattr_").append(attr.attr).append("_state = 1;\n");
+                        setAttributeState(sb, "        ", count, stateIndex, 1);
                         sb.append("        zzattr_").append(attr.attr).append("_cache = ")
                                 .append(attr.implementedBy).append("((")
                                 .append(c.getName(typePrefix)).append(")this);\n");
-                        sb.append("        zzattr_").append(attr.attr).append("_state = 2;\n");
+                        setAttributeState(sb, "        ", count, stateIndex, 2);
                         sb.append("        return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    }\n");
                     } else {
                         // ---------- CIRCULAR (FIXPOINT) CACHED ATTRIBUTE ----------
                         // States: 0 = uninitialized, 1 = iterating, 2 = fixed, 3 = touched-during-iteration
-                        sb.append("    private byte zzattr_").append(attr.attr).append("_state = 0;\n");
                         sb.append("    private ").append(attr.returns).append(" zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    /** ").append(attr.comment).append("*/\n");
                         sb.append("    public ").append(attr.returns).append(" ").append(attr.attr).append("() {\n");
-                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 2) {\n");
+                        sb.append("        int s = ").append(state).append(";\n");
+                        sb.append("        if (s == 2) {\n");
                         sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("        }\n");
-                        sb.append("        if (zzattr_").append(attr.attr).append("_state == 1")
-                                .append(" || zzattr_").append(attr.attr).append("_state == 3) {\n");
+                        sb.append("        if (s == 1 || s == 3) {\n");
                         sb.append("            // Mark that we were queried during iteration\n");
-                        sb.append("            zzattr_").append(attr.attr).append("_state = 3;\n");
+                        setAttributeState(sb, "            ", count, stateIndex, 3);
                         sb.append("            return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("        }\n");
                         sb.append("        // Initialize and iterate to a fixpoint\n");
-                        sb.append("        zzattr_").append(attr.attr).append("_state = 1;\n");
+                        setAttributeState(sb, "        ", count, stateIndex, 1);
                         sb.append("        zzattr_").append(attr.attr).append("_cache = ").append(attr.circular).append("();\n");
                         sb.append("        while (true) {\n");
                         sb.append("            ").append(attr.returns).append(" r = ")
                                 .append(attr.implementedBy).append("((")
                                 .append(c.getName(typePrefix)).append(")this);\n");
-                        sb.append("            if (zzattr_").append(attr.attr).append("_state == 3) {\n");
+                        sb.append("            if ((").append(state).append(") == 3) {\n");
                         sb.append("                // Another access happened during iteration -> keep iterating until stable\n");
                         sb.append("                if (!(").append(equalityExpression(
                                 "zzattr_" + attr.attr + "_cache", "r", attr.returns)).append(")) {\n");
@@ -503,9 +568,9 @@ public class Generator {
                         sb.append("                }\n");
                         sb.append("            }\n");
                         sb.append("            // Reset to 'iterating' for the next step (clears the 3-marker if it was set)\n");
-                        sb.append("            zzattr_").append(attr.attr).append("_state = 1;\n");
+                        setAttributeState(sb, "            ", count, stateIndex, 1);
                         sb.append("        }\n");
-                        sb.append("        zzattr_").append(attr.attr).append("_state = 2;\n");
+                        setAttributeState(sb, "        ", count, stateIndex, 2);
                         sb.append("        return zzattr_").append(attr.attr).append("_cache;\n");
                         sb.append("    }\n");
                     }
@@ -806,34 +871,16 @@ public class Generator {
         sb.append("    }\n\n");
     }
 
-    private void createClearMethod(ConstructorDef c, StringBuilder sb) {
+    private void createClearMethod(AstBaseTypeDefinition c, StringBuilder sb) {
         // local clear attributes:
         sb.append("    @Override public void clearAttributesLocal() {\n");
-        for (AttributeDef attr : prog.attrDefs) {
-            if (hasAttribute(c, attr)) {
-                if (attr.parameters == null) {
-                    sb.append("        zzattr_" + attr.attr + "_state = 0;\n");
-                    if (!JavaTypes.primitiveTypes.contains(attr.returns)) {
-                        sb.append("        zzattr_" + attr.attr + "_cache = null;\n");
-                    }
-                }
-            }
+        List<AttributeDef> cached = cachedAttributes(c);
+        for (int word = 0; word * 32 < cached.size(); word++) {
+            sb.append("        zzattrStates").append(word).append(" = 0;\n");
         }
-
-        sb.append("    }\n");
-    }
-
-    private void createClearMethod(ListDef c, StringBuilder sb) {
-        // local clear
-        sb.append("    @Override public void clearAttributesLocal() {\n");
-        for (AttributeDef attr : prog.attrDefs) {
-            if (hasAttribute(c, attr)) {
-                if (attr.parameters == null) {
-                    sb.append("        zzattr_" + attr.attr + "_state = 0;\n");
-                    if (!JavaTypes.primitiveTypes.contains(attr.returns)) {
-                        sb.append("        zzattr_" + attr.attr + "_cache = null;\n");
-                    }
-                }
+        for (AttributeDef attr : cached) {
+            if (!JavaTypes.primitiveTypes.contains(attr.returns)) {
+                sb.append("        zzattr_" + attr.attr + "_cache = null;\n");
             }
         }
         sb.append("    }\n");
@@ -1255,6 +1302,8 @@ public class Generator {
             sb.append("        t.setParent(null);\n");
         }
         sb.append("    }\n\n");
+        sb.append("    @Override protected boolean zzOwnsElements() { return ")
+                .append(isGeneratedTyp(l.itemType) && !l.ref).append("; }\n\n");
 
         // set method:
         sb.append("    @Override\n");
@@ -1509,6 +1558,7 @@ public class Generator {
         sb.append("     */\n");
         sb.append("    static final int MAX_DEPTH = 256;\n\n");
         if (countsModifications()) {
+            boolean stopAtFirstCounted = !countedTypesCanNest();
             sb.append("    /**\n");
             sb.append("     * Counts a modification of the element and of everything below which it is: each element above it which counts\n");
             sb.append("     * modifications (").append(String.join(", ", prog.countedTypes)).append(") counts one more.\n");
@@ -1516,7 +1566,10 @@ public class Generator {
             sb.append("    static void modified(").append(elementType).append(" start) {\n");
             sb.append("        for (").append(elementType).append(" e = start; e != null; e = e.getParent()) {\n");
             for (String counted : prog.countedTypes) {
-                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount++;\n");
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) {\n");
+                sb.append("                counted.zzModificationCount++;\n");
+                if (stopAtFirstCounted) sb.append("                return; // The spec cannot nest counted nodes.\n");
+                sb.append("            }\n");
             }
             sb.append("        }\n");
             sb.append("    }\n\n");

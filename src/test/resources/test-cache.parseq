@@ -1,0 +1,313 @@
+package test.cache
+typeprefix: CP
+abstract syntax:
+Cached = Node(int number) | NodeList
+NodeList * Node
+ReferenceList * ref Node
+Small()
+Medium()
+SharedRoot(ProbeList nodes)
+ProbeList * Probe
+Probe(int number)
+attributes:
+Probe.value
+    returns String
+    implemented by test.bench.ConcurrentAttributesProbe.evaluate
+Cached.a0
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a1
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a2
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a3
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a4
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a5
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a6
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a7
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a8
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a9
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a10
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a11
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a12
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a13
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a14
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a15
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a16
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a17
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a18
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a19
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a20
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a21
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a22
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a23
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a24
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a25
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a26
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a27
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a28
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a29
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a30
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a31
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a32
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a33
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a34
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a35
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a36
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a37
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a38
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a39
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a40
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a41
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a42
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a43
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a44
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a45
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a46
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a47
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a48
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a49
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a50
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a51
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a52
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a53
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a54
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a55
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a56
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a57
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a58
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a59
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a60
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a61
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a62
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a63
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a64
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a65
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a66
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a67
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a68
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.a69
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s0
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s1
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s2
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s3
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s4
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s5
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s6
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Small.s7
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s0
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s1
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s2
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s3
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s4
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s5
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s6
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s7
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s8
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s9
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s10
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s11
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s12
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s13
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s14
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Medium.s15
+    returns int
+    implemented by test.cache.CacheAttributes.evaluate
+Cached.nested
+    returns int
+    implemented by test.cache.CacheAttributes.nested
+Cached.cycleA
+    returns int
+    implemented by test.cache.CacheAttributes.cycleA
+Cached.cycleB
+    returns int
+    implemented by test.cache.CacheAttributes.cycleB
+Cached.circularTwice
+    returns boolean
+    implemented by test.cache.CacheAttributes.circularTwice
+    circular test.cache.CacheAttributes.circularInitial
+Cached.object
+    returns Object
+    implemented by test.cache.CacheAttributes.object

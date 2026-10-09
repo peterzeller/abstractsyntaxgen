@@ -98,6 +98,10 @@ public class AstBench {
     }
 
     public static void main(String[] args) {
+        if (args.length > 0 && args[0].equals("mutations")) {
+            MutationBench.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         int rounds = args.length > 0 ? Integer.parseInt(args[0]) : 12;
         int functions = args.length > 1 ? Integer.parseInt(args[1]) : 4000;
 

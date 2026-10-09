@@ -33,6 +33,8 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
 
     abstract protected void other_setParentToThis(T t);
     abstract protected void other_clearParent(T t);
+    /** Whether this list owns generated children rather than storing references or external values. */
+    protected boolean zzOwnsElements() { return false; }
 
     @SuppressWarnings("unchecked")
     private T at(int index) { return (T) elems[index]; }
@@ -135,6 +137,62 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         size = 0;
         structureChanged();
         return result;
+    }
+
+    /** Moves all owned children from source to the end of this list. */
+    public boolean addAllMoved(AsgList<? extends T> source) { return addAllMoved(size, source); }
+
+    /**
+     * Moves all owned children from source into this list at index, preserving their order.
+     * Source is empty afterwards. Both lists must own their children and must be distinct.
+     * An empty destination takes the source array; otherwise only the destination needs capacity.
+     * A failed parent attachment restores the original parents and leaves both lists unchanged.
+     */
+    public boolean addAllMoved(int index, AsgList<? extends T> source) {
+        Objects.requireNonNull(source);
+        if (index < 0 || index > size) throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
+        if (source == this) throw new IllegalArgumentException("Cannot move a list into itself");
+        if (!zzOwnsElements() || !source.zzOwnsElements()) throw new IllegalArgumentException("Only owned children can be moved");
+        int count = source.size;
+        if (count == 0) return false;
+        // Moving a node into a list below that node would create a parent cycle.
+        for ($ELEMENT$ ancestor = ($ELEMENT$) this; ancestor != null; ancestor = ancestor.getParent()) {
+            if (ancestor.getParent() == source) throw new IllegalArgumentException("Cannot move an ancestor into its descendant");
+        }
+        boolean takeArray = size == 0;
+        if (!takeArray) reserve(count); // Allocate before changing parents.
+        moveParentsFrom(source, count);
+        if (takeArray) {
+            elems = source.elems;
+        } else {
+            System.arraycopy(elems, index, elems, index + count, size - index);
+            System.arraycopy(source.elems, 0, elems, index, count);
+        }
+        size += count;
+        source.elems = NO_ELEMENTS;
+        source.size = 0;
+        source.structureChanged();
+        structureChanged();
+        return true;
+    }
+
+    private <S extends T> void moveParentsFrom(AsgList<S> source, int count) {
+        int moved = 0;
+        try {
+            for (; moved < count; moved++) {
+                S element = source.at(moved);
+                source.other_clearParent(element);
+                try { other_setParentToThis(element); }
+                catch (RuntimeException | Error failure) { source.other_setParentToThis(element); throw failure; }
+            }
+        } catch (RuntimeException | Error failure) {
+            for (int i = moved - 1; i >= 0; i--) {
+                S element = source.at(i);
+                other_clearParent(element);
+                source.other_setParentToThis(element);
+            }
+            throw failure;
+        }
     }
 
     @Override public void add(int index, T elem) {

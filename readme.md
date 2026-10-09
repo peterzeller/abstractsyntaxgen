@@ -359,7 +359,7 @@ var copy = program.copyWithRefs(); // Maintains reference integrity
 ### Best Practices
 
 1. **Use `copy()` when building new trees** to avoid parent conflicts
-2. **Use `removeAll()` when moving collections** to transfer ownership
+2. **Use `destination.addAllMoved(source)` when moving owned list children** to transfer ownership directly
 3. **Use visitors for tree traversal** - they're type-safe and exhaustive
 4. **Use matchers for transformations** - they ensure all cases are handled
 5. **Test mutations thoroughly** - verify parent relationships and semantic correctness
@@ -391,12 +391,82 @@ a comparison):
   not a measurement of an additional WurstScript build speedup.
 - **List spliterators bind on traversal and check structural modifications.** Streams see changes made before their
   terminal operation starts; split traversals preserve order and size and detect subsequent structural changes.
+- **Owned lists can move their children directly with `addAllMoved(source)` or `addAllMoved(index, source)`.**
+  The source becomes empty and order is preserved. An empty destination takes the backing array; a populated
+  destination copies directly into its buffer. Parent attachment failures roll back, ancestor cycles are rejected,
+  and both lists invalidate their iterators and identity indexes. Reference and external-value lists are excluded.
+  Each changed list reports one modification, so a shared counted ancestor receives two increments.
+  `ListTransferBench` compares this with `addAll(source.removeAll())`. For 1,024 children moved repeatedly between
+  empty destinations, OpenJDK 25/27 with compact headers and Parallel GC measured about 0.44-0.50 versus 2.4 ns/child,
+  with 0 versus 12,360 allocated bytes per transfer. Populated destinations still need space and array copies.
+- **Cached attributes use two state bits each in primitive fields**, with no per-node `BitSet` or backing-array object.
+  Full groups of 32 attributes use a `long`; the final group uses the smallest sufficient primitive. Updates read
+  the live word so nested evaluations retain other attributes' state. Clearing resets each word once and releases
+  reference-valued caches. `CacheStateBench` uses a synthetic node with 75 cached attributes and five sampled getters.
+  Three interleaved JVM pairs per version (OpenJDK 25 and 27, compact headers, Parallel GC, 512 MiB heap) reduced
+  its allocation from 392 to 336 bytes/node. Cached reads measured 0.57-0.64 versus 0.68-0.83 ns/getter; clearing and
+  recomputing measured 0.73-0.94 versus 2.75-2.86 ns/getter. The evaluator is intentionally trivial; these diagnostics
+  establish the storage cost, not an end-to-end compiler speedup. Actual savings depend on fields and object alignment.
 - **A `DefaultVisitor` which does not override a list's `visit` method visits the elements of the lists directly**,
   from the element above them. It visits the same elements in the same order; a visitor which overrides the visit of
   a list is told of every list, as before.
 - A walk over a tree is bound by memory, not by the dispatch: about 20 ns for each node of a tree which does not fit in the
   cache, whether the walk is a visitor or a loop over `size()` and `get(i)`. The way to make it faster is a smaller tree
   or fewer walks.
+
+### Parallel execution
+
+Generated trees are mutable; arbitrary shared-tree operations are not thread-safe. Attribute getters also mutate caches: an in-progress state
+belongs to an evaluation, and circular attributes maintain an evolving approximation. Packed state words must not
+be updated by multiple threads, even when they evaluate different attributes on the same node. Modification counters
+are ordinary increments; editing separate branches of the same tree still writes their shared counted ancestors.
+Fail-fast iterators detect some invalid edits but provide neither synchronization nor a snapshot.
+
+**Disjoint subtree mutation has a narrower supported contract.** Publish the constructed tree before starting workers,
+give each subtree exactly one owner, and join the workers before reading their changes. While workers run, shared
+ancestors, their lists, and their parent links must remain stable. A worker may mutate only its owned nodes and lists;
+it must not read, evaluate attributes on, or edit another worker's mutable subtree through references or callbacks.
+Every counted ancestor of an edited node must also belong exclusively to that worker. Non-nesting counted functions
+meet this requirement; a shared counted root does not. Do not move nodes across ownership boundaries during the phase.
+Collect diagnostics and results in worker-local buffers, then merge them by input position, not completion order.
+`DisjointMutationTest` exercises eight owners over six runs, checking parent links, contents, order, and exact counts
+after setters, additions, removals, replacements, and bulk replacements, with no synchronization inside the mutations.
+
+**Non-nesting counted specs stop modification propagation at the first counted node.** The generator checks owned
+constructor fields, list elements, cases, and recursive paths; reference edges do not imply containment. If any counted
+type can contain another counted type, the full walk remains, and every counted ancestor still increments. Custom
+node implementations must respect the spec's declared containment graph for this optimization and ownership contract.
+Nested counts remain useful for sequential code, but they require an exclusive owner for the common counted ancestor.
+`AstBench mutations [ancestorDepth]` measures identical schemas with and without counts (setters, add/remove pairs,
+and single-child `replaceEach`, including allocation and caller preparation). Three interleaved OpenJDK 27 JVM pairs
+with 16 uncounted ancestors, compact headers, Parallel GC, and a 512 MiB heap measured counted setters at 61.5-68.3
+versus 9.5-9.7 ns, add/remove pairs at 104.7-111.6 versus 9.5-9.8 ns, and `replaceEach` at 82.5-87.7 versus 38.1-40.8 ns.
+These synthetic results isolate an avoidable ancestor walk; they do not predict whole-compiler speedup.
+
+Parallel traversal is appropriate when the entire reachable input graph is stable, safely published to workers,
+and callbacks do not compute uncached attributes or mutate shared results. Give each task its own visitor and
+collect results by input position before merging them in order. Precompute required caches before publication,
+or keep analysis results in worker-owned storage. Independent trees can be transformed by their owning workers;
+references into shared trees and user-supplied attribute implementations need the same ownership discipline.
+
+For shared-tree transformations, have workers produce ordered edit plans and apply them after a barrier with one
+owner. This keeps parent links, reference repair, cache invalidation, and modification counts consistent. Supporting
+concurrent attribute evaluation needs an explicit evaluation context and a policy for cross-thread dependency cycles;
+making state fields volatile or adding per-node locks alone does not supply those semantics.
+
+`ConcurrentAttributesProbe [workers=8]` is a standalone expected-failure diagnostic, outside the passing JUnit suite.
+It evaluates one shared 4,096-node tree against sequential results, holding one cold evaluator while other workers
+enter that attribute. It currently reports false cycle failures and exits with status 1; the safely published warm
+phase passes. This demonstrates unsupported cold-cache concurrency, not the absence of other races. Before designing
+an opt-in protocol, measure WurstScript's validator twice in one JVM to separate cold evaluation from warm validation.
+An eventual protocol needs acquire/release publication, atomic packed-state updates, slow-path distinction between
+recursion and another worker, and a cross-thread dependency-cycle policy. Attribute implementations and error sinks
+also need their own concurrency contract; those are compiler responsibilities.
+
+The build targets Java 25. CI also runs the generated-code tests on Java 27; locally use
+`./gradlew test -PtestJavaVersion=27` with both toolchains installed. Keep bulk compiler data in dense primitive arrays
+when profiling identifies suitable kernels. Pointer traversal and arbitrary attribute callbacks do not have the
+independent lanes needed for SIMD; native implementations should be considered only for measured bulk bottlenecks.
 
 
 ## Documentation

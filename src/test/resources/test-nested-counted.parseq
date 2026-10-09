@@ -1,0 +1,8 @@
+package test.mutation.nested
+typeprefix: NC
+modification counts: Unit
+abstract syntax:
+Unit(ChildList children)
+ChildList * Child
+Child = Leaf(int number) | Nested(Unit unit)
+attributes:
