@@ -169,6 +169,27 @@ oldStmt.replaceBy(newStmt);
 list.set(1, newStmt);
 ```
 
+**Replacing by several nodes (splicing)**
+
+A node in a list can be replaced by any number of nodes, which take its place in order; no node removes it.
+The new nodes must not be in a tree, and nothing changes if one of them is.
+
+```java
+oldStmt.replaceByAll(List.of(stmtA, stmtB));   // one node
+oldStmt.replaceByAll(List.of());                // removes it
+```
+
+To replace many nodes of one list, give `replaceEach` a map from the node to its replacements. It makes one pass
+over the list however many nodes are replaced, where one `replaceByAll` after another is a pass each. The keys are
+looked up as the map compares them, so use an `IdentityHashMap` to replace by identity.
+
+```java
+Map<Statement, List<Statement>> replacements = new IdentityHashMap<>();
+replacements.put(dead, List.of());                       // remove
+replacements.put(call, List.of(setup, call.copy()));     // replace by two
+int replaced = list.replaceEach(replacements);           // the number of nodes replaced
+```
+
 #### 3. Moving Nodes Between Trees
 
 **Problem**: Direct movement violates tree invariant
@@ -197,6 +218,40 @@ list2.addAll(statements); // ✅ Now they can be added elsewhere
 stmt.setParent(null); // Clear parent first
 list2.add(stmt); // ✅ Now it can be moved
 ```
+
+### Knowing What Changed: Modification Counts
+
+An analysis which is kept between passes, or a pass which only has to look at what changed, needs to know whether a
+part of the tree is the part it saw. A spec can name the constructors which count the modifications of themselves
+and of everything below them:
+
+```
+package my.ast
+typeprefix: My
+modification counts: Function, Program
+
+abstract syntax:
+...
+```
+
+`Function` and `Program` have an `int modificationCount()` then. It goes up by one for each change of the element or
+of anything below it, and each element above which counts changes too (a function and the program it is in):
+
+```java
+int seen = function.modificationCount();
+// ... passes ...
+if (function.modificationCount() == seen) {
+    // nothing in it changed: what you computed from it is still right
+}
+```
+
+* A change is a setter (of a child or of any other field), anything done to a list (add, remove, set, clear, sort,
+  `replaceEach`, an iterator, a `subList`), and a replacement (`replaceBy`, `replaceByAll`). Reading counts nothing.
+* A node which is moved out of a tree counts for the tree it was in, and for the tree it is put into.
+* A copy starts at zero, and building a tree (the factory methods) counts nothing. What is changed in a tree which
+  is not a part of a counting element counts for no one.
+* It wraps around after 2^32 modifications; compare for equality.
+* A spec without `modification counts:` gets no counting code at all.
 
 ### Advanced Mutations
 
@@ -310,6 +365,38 @@ var copy = program.copyWithRefs(); // Maintains reference integrity
 5. **Test mutations thoroughly** - verify parent relationships and semantic correctness
 6. **Use `copyWithRefs()` for reference-heavy trees** - it maintains reference integrity
 7. **Use `Element.IterativeVisitor#traverse` for deeply nested or untrusted trees** - it avoids recursion limits
+
+## Performance
+
+What the generated code costs, and why it is built the way it is. `src/test/java/test/bench/AstBench.java` measures
+all of it (run its `main` on the test classes; it prints the heap per node and the time per node of a walk, a copy and
+a comparison):
+
+- **A list is an object with its own array.** It does not wrap an `ArrayList`, which was a second object per list and
+  a second load for each element. A list which is filled in one go gets an array of exactly its size; one which grows
+  one element at a time starts with room for three. A node of a tree costs about 28 bytes on Java 27 (compact object
+  headers), of which a list node is 32.
+- **`copy()` and `structuralEquals()` do not ask a node which type it is.** Each generated element copies and compares
+  itself (`zzCopy`, `zzStructuralEquals`), recursing for the first 256 levels; a tree which is deeper continues in an
+  iterative loop, so the depth of a tree is still not limited by the stack. This is about twice as fast as a search
+  for the type of each node, and avoids traversal scratch allocations for a small tree. The iterative comparison
+  delegates a custom node's entire subtree to its `structuralEquals` implementation, just as the recursive path does.
+- **`copyWithRefs()` maps every copied node, but repairs only copies with reference fields.** Generated virtual methods
+  remap those fields after all targets have been copied, including later siblings and leaves; external and null
+  references are preserved. Iterative copying reserves each list's capacity once and does not schedule leaves on its
+  work stacks. `src/test/java/test/bench/ReferenceCopyBench.java` measures this path separately, with warmup rounds,
+  median times and allocated bytes per node. On a synthetic 102,001-node tree with one reference per four declarations,
+  three interleaved comparisons on OpenJDK 25 (Parallel GC, `-Xmx2g`, 24 measured rounds per JVM) reduced reference-copy
+  time from 60.6–66.5 to 46.6–50.0 ns/node and allocation from 89.4 to 75.2 bytes/node. These are microbenchmark results,
+  not a measurement of an additional WurstScript build speedup.
+- **List spliterators bind on traversal and check structural modifications.** Streams see changes made before their
+  terminal operation starts; split traversals preserve order and size and detect subsequent structural changes.
+- **A `DefaultVisitor` which does not override a list's `visit` method visits the elements of the lists directly**,
+  from the element above them. It visits the same elements in the same order; a visitor which overrides the visit of
+  a list is told of every list, as before.
+- A walk over a tree is bound by memory, not by the dispatch: about 20 ns for each node of a tree which does not fit in the
+  cache, whether the walk is a visitor or a loop over `size()` and `get(i)`. The way to make it faster is a smaller tree
+  or fewer walks.
 
 
 ## Documentation

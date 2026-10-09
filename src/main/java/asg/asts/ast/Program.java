@@ -11,6 +11,8 @@ public class Program {
 	public final List<AttributeDef> attrDefs = new LinkedList<>();
 	public final List<FieldDef> fieldDefs = new ArrayList<>();
 	public final Map<String, AstEntityDefinition> definitions = new HashMap<>();
+	/** The constructors which count the modifications of themselves and of what is below them, in the order of the spec. */
+	public final List<String> countedTypes = new ArrayList<>();
 	private String packageName;
 	private String typePrefix = "";
 
@@ -54,6 +56,13 @@ public class Program {
 		definitions.put(name, def);
 	}
 	
+	public void addCountedType(String name) {
+		if (countedTypes.contains(name)) {
+			throw new Error("Name " + name + " is in the modification counts twice.");
+		}
+		countedTypes.add(name);
+	}
+
 	public void addConstructorDef(ConstructorDef c) {
 		addDefinition(c.getName(), c);
 		constructorDefs.add(c);

@@ -1,0 +1,26 @@
+package test.counted
+
+typeprefix: TC
+modification counts: Unit, Root
+
+abstract syntax:
+
+Root(UnitList units, String title)
+
+UnitList * Unit
+
+Unit(String name, StmtList body)
+
+StmtList * Stmt
+
+Stmt =
+    Assign(String variable, Expr value)
+  | Print(Expr value)
+  | Branch(Expr condition, StmtList thenBranch, StmtList elseBranch)
+
+Expr =
+    Num(int number)
+  | Var(String name)
+  | Add(Expr left, Expr right)
+
+attributes:

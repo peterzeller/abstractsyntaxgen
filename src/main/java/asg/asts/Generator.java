@@ -40,6 +40,25 @@ public class Generator {
         this.typePrefix = prog.getTypePrefix();
         this.packageName = prog.getPackageName();
         this.mainName = prog.getFactoryName();
+        for (String counted : prog.countedTypes) {
+            if (prog.constructorDefs.stream().noneMatch(c -> c.getName().equals(counted))) {
+                throw new Error("The modification counts name " + counted + ", which is not a constructor of the spec.");
+            }
+        }
+    }
+
+    /** Whether the elements count their modifications, which is when the spec names a type which counts them. */
+    private boolean countsModifications() {
+        return !prog.countedTypes.isEmpty();
+    }
+
+    private boolean isCounted(ConstructorDef c) {
+        return prog.countedTypes.contains(c.getName());
+    }
+
+    /** The line which counts a change of this element, which every setter ends with; none if nothing counts. */
+    private String modifiedStatement() {
+        return countsModifications() ? "        " + getTreeUtilType() + ".modified(this);\n" : "";
     }
 
 
@@ -272,6 +291,7 @@ public class Generator {
         // create constructor
         createConstructor(c, sb);
         createShallowCopyMethod(c, sb);
+        createModificationCount(c, sb);
 
         // get/set parent method:
         createGetSetParentMethods(sb);
@@ -297,6 +317,7 @@ public class Generator {
 
         // copyWithRefs method
         createCopyWithRefsMethod(c, sb);
+        createReferenceRepairMethods(c, sb);
 
         // clear attributes method
         createClearMethod(c, sb);
@@ -320,10 +341,79 @@ public class Generator {
         fileGenerator.createFile(c.getName(typePrefix) + "Impl.java", sb);
     }
 
+    private void createModificationCount(ConstructorDef c, StringBuilder sb) {
+        if (!isCounted(c)) {
+            return;
+        }
+        sb.append("    /** Counted by the changes of this element and of everything below it, see ").append(getTreeUtilType()).append(".modified. */\n");
+        sb.append("    int zzModificationCount;\n");
+        sb.append("    @Override public int modificationCount() { return zzModificationCount; }\n\n");
+    }
+
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
+        String treeUtil = getTreeUtilType();
+        sb.append("    @Override public java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        sb.append("        if (!(e instanceof ").append(c.getName(typePrefix)).append(" target)) return false;\n");
+        List<String> comparisons = fieldComparisons(c, "this.", "target.");
+        sb.append("        return ").append(comparisons.isEmpty() ? "true" : String.join(" && ", comparisons)).append(";\n");
+        sb.append("    }\n\n");
         sb.append("    public boolean structuralEquals(" + getCommonSupertypeType() + " e) {\n");
-        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
+        sb.append("        return zzStructuralEquals(e, 0);\n");
+        sb.append("    }\n\n");
+        // recursive, as far as the depth allows: one virtual call per node. Deeper trees continue iteratively.
+        sb.append("    @Override public boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" e, int depth) {\n");
+        sb.append("        if (this == e) return true;\n");
+        sb.append("        if (!(e instanceof ").append(c.getName(typePrefix)).append(" target)) return false;\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return ").append(treeUtil).append(".structuralEquals(this, e);\n");
+        for (String comparison : fieldComparisons(c, "this.", "target.")) {
+            sb.append("        if (!(").append(comparison).append(")) return false;\n");
+        }
+        for (Parameter p : c.parameters) {
+            if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                sb.append("        if (!this.").append(p.name).append(".zzStructuralEquals(target.get").append(toFirstUpper(p.name))
+                        .append("(), depth + 1)) return false;\n");
+            }
+        }
+        sb.append("        return true;\n");
         sb.append("    }\n");
+    }
+
+    private void createReferenceRepairMethods(ConstructorDef c, StringBuilder sb) {
+        List<Parameter> refs = new ArrayList<>();
+        for (Parameter p : c.parameters) {
+            if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
+        }
+        if (refs.isEmpty()) return;
+        String elementType = getCommonSupertypeType();
+        sb.append("    @Override public boolean zzHasReferences() { return true; }\n");
+        sb.append("    @Override public void zzRepairReferences(java.util.IdentityHashMap<")
+                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
+        for (Parameter p : refs) {
+            sb.append("        ").append(elementType).append(" mapped_").append(p.name)
+                    .append(" = copies.get(this.").append(p.name).append(");\n");
+            sb.append("        if (mapped_").append(p.name).append(" != null) this.").append(p.name)
+                    .append(" = (").append(printType(p.getTyp())).append(") mapped_").append(p.name).append(";\n");
+        }
+        sb.append("    }\n\n");
+    }
+
+    /**
+     * What makes two elements of this constructor equal besides their children: the values of the parameters which take
+     * part in the equality, and the identity of the references.
+     */
+    private List<String> fieldComparisons(ConstructorDef c, String leftPrefix, String rightPrefix) {
+        List<String> comparisons = new ArrayList<>();
+        for (Parameter p : c.parameters) {
+            if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
+            String leftExpr = leftPrefix + "get" + toFirstUpper(p.name) + "()";
+            String rightExpr = rightPrefix + "get" + toFirstUpper(p.name) + "()";
+            if (p.isRef && prog.hasElement(p.getTyp())) {
+                comparisons.add(leftExpr + " == " + rightExpr);
+            } else {
+                comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
+            }
+        }
+        return comparisons;
     }
 
     private void createFieldsImpl(AstBaseTypeDefinition c, StringBuilder sb) {
@@ -340,6 +430,7 @@ public class Generator {
             sb.append("    public void set" + toFirstUpper(field.getFieldName())
                     + "(" + field.getFieldType() + " " + field.getFieldName() + ") {\n");
             sb.append("        this." + field.getFieldName() + " = " + field.getFieldName() + ";\n");
+            sb.append(modifiedStatement());
             sb.append("    }\n");
         }
     }
@@ -501,7 +592,7 @@ public class Generator {
 
     private void createShallowCopyMethod(ConstructorDef c, StringBuilder sb) {
         String implType = c.getName(typePrefix) + "Impl";
-        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
         for (Parameter p : c.parameters) {
             if (p.isRef || !prog.hasElement(p.getTyp())) {
@@ -510,8 +601,8 @@ public class Generator {
         }
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(c, field)) {
-                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
-                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+                // not through the setter, which counts a modification: a copy has had none
+                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
         sb.append("        return result;\n");
@@ -586,6 +677,22 @@ public class Generator {
         sb.append("            }\n");
         sb.append("        }\n");
         sb.append("    }\n\n");
+
+        // replaceByAll: an element of a list can be replaced by any number of elements, in the place it is in
+        sb.append("    public void replaceByAll(java.util.Collection<? extends ").append(T).append("> others) {\n");
+        sb.append("        if (parent == null)\n");
+        sb.append("            throw new RuntimeException(\"Node not attached to tree.\");\n");
+        sb.append("        if (parent instanceof AsgList) {\n");
+        sb.append("            if (!((AsgList<").append(T).append(">) parent).replaceExactByAll(this, others)) {\n");
+        sb.append("                throw new RuntimeException(\"Node not found in parent list.\");\n");
+        sb.append("            }\n");
+        sb.append("            return;\n");
+        sb.append("        }\n");
+        sb.append("        if (others.size() != 1) {\n");
+        sb.append("            throw new RuntimeException(\"An element which is not in a list can be replaced by exactly one element, not by \" + others.size());\n");
+        sb.append("        }\n");
+        sb.append("        replaceBy(others.iterator().next());\n");
+        sb.append("    }\n\n");
     }
 
 
@@ -611,7 +718,9 @@ public class Generator {
                     sb.append("        " + p.name + ".setParent(this);\n");
                 }
             }
-            sb.append("        this." + p.name + " = " + p.name + ";\n" + "    } \n");
+            sb.append("        this." + p.name + " = " + p.name + ";\n");
+            sb.append(modifiedStatement());
+            sb.append("    } \n");
             // getter
             sb.append("    public " + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "() { return " + p.name + "; }\n\n");
         }
@@ -668,9 +777,25 @@ public class Generator {
     }
 
     private void createCopyMethod(ConstructorDef c, StringBuilder sb) {
+        String implType = c.getName(typePrefix) + "Impl";
+        String treeUtil = getTreeUtilType();
         sb.append("    @Override public " + c.getName(typePrefix) + " copy() {\n");
-        sb.append("        return (").append(c.getName(typePrefix)).append(") ")
-                .append(getTreeUtilType()).append(".copy(this, false);\n");
+        sb.append("        return zzCopy(0);\n");
+        sb.append("    }\n\n");
+        // recursive, as far as the depth allows: no stack and no search for the type of each node. Deeper trees continue
+        // iteratively, so that the depth of a tree is not limited by the stack.
+        sb.append("    @Override public ").append(implType).append(" zzCopy(int depth) {\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return (").append(implType).append(") ")
+                .append(treeUtil).append(".copy(this, false);\n");
+        sb.append("        ").append(implType).append(" result = zzShallowCopy();\n");
+        for (Parameter p : c.parameters) {
+            if (prog.hasElement(p.getTyp()) && !p.isRef) {
+                sb.append("        result.").append(p.name).append(" = (").append(printType(p.getTyp())).append(") this.")
+                        .append(p.name).append(".zzCopy(depth + 1);\n");
+                sb.append("        result.").append(p.name).append(".setParent(result);\n");
+            }
+        }
+        sb.append("        return result;\n");
         sb.append("    }\n\n");
     }
 
@@ -787,6 +912,15 @@ public class Generator {
         sb.append("    ").append(c.getName(typePrefix)).append(" copy();\n");
         sb.append("    ").append(c.getName(typePrefix)).append(" copyWithRefs();\n");
         sb.append("    void clearAttributesLocal();\n");
+        if (isCounted(c)) {
+            sb.append("    /**\n");
+            sb.append("     * How many modifications this element and everything below it have had: it changes when a setter, a list or a\n");
+            sb.append("     * replacement changes the element or something below it, and it stays the same while nothing does (a copy starts\n");
+            sb.append("     * at zero; what is moved out of the tree counts for the tree it was in). Compare it with the number you saw to\n");
+            sb.append("     * know whether the element is the same. It wraps around after 2^32 modifications.\n");
+            sb.append("     */\n");
+            sb.append("    int modificationCount();\n");
+        }
 
         createAttributeStubs(c, sb);
         createFieldStubs(c, sb);
@@ -817,6 +951,31 @@ public class Generator {
 
         // Default Visitor
         sb.append("    public static abstract class DefaultVisitor implements Visitor {\n");
+        if (!prog.listDefs.isEmpty()) {
+            // A list is a node of its own, so visiting an element with a list below it is two calls more for each list
+            // (to the list, which visits its elements), and most lists are empty or short. Unless the visitor looks at
+            // the lists, their elements are visited from the element above: the same visits, in the same order.
+            sb.append("        private static final ClassValue<Boolean> LIST_VISITS_OVERRIDDEN = new ClassValue<>() {\n");
+            sb.append("            @Override protected Boolean computeValue(Class<?> type) {\n");
+            sb.append("                for (Class<?> list : new Class<?>[] {");
+            boolean firstList = true;
+            for (ListDef l : prog.listDefs) {
+                if (!firstList) sb.append(", ");
+                sb.append(l.getName(typePrefix)).append(".class");
+                firstList = false;
+            }
+            sb.append("}) {\n");
+            sb.append("                    try {\n");
+            sb.append("                        if (type.getMethod(\"visit\", list).getDeclaringClass() != DefaultVisitor.class) return true;\n");
+            sb.append("                    } catch (NoSuchMethodException e) {\n");
+            sb.append("                        return true;\n");
+            sb.append("                    }\n");
+            sb.append("                }\n");
+            sb.append("                return false;\n");
+            sb.append("            }\n");
+            sb.append("        };\n");
+            sb.append("        private final boolean visitsLists = LIST_VISITS_OVERRIDDEN.get(getClass());\n");
+        }
         for (AstEntityDefinition contained : defs) {
             if (contained instanceof AstBaseTypeDefinition) {
                 AstBaseTypeDefinition c = (AstBaseTypeDefinition) contained;
@@ -826,7 +985,16 @@ public class Generator {
                     ConstructorDef cconst = (ConstructorDef) contained;
                     for (Parameter p : cconst.parameters) {
                         if (prog.hasElement(p.getTyp()) && !p.isRef) {
-                            sb.append("          " + toFirstLower(c.getName()) + ".get" + toFirstUpper(p.name) + "().accept(this);\n");
+                            String child = toFirstLower(c.getName()) + ".get" + toFirstUpper(p.name) + "()";
+                            if (prog.getElement(p.getTyp()) instanceof ListDef) {
+                                sb.append("          {\n");
+                                sb.append("              ").append(printType(p.getTyp())).append(" zzList = ").append(child).append(";\n");
+                                sb.append("              if (visitsLists) zzList.accept(this);\n");
+                                sb.append("              else for (int zzI = 0, zzN = zzList.size(); zzI < zzN; zzI++) zzList.get(zzI).accept(this);\n");
+                                sb.append("          }\n");
+                            } else {
+                                sb.append("          " + child + ".accept(this);\n");
+                            }
                         }
                     }
                 } else {
@@ -1069,6 +1237,13 @@ public class Generator {
 
         createReplaceByMethod(sb);
 
+        if (countsModifications()) {
+            // a change of the list is a change of the element it is a part of
+            sb.append("    @Override protected void zzModified() {\n");
+            sb.append("        if (parent != null) ").append(getTreeUtilType()).append(".modified(parent);\n");
+            sb.append("    }\n\n");
+        }
+
         sb.append("    protected void other_setParentToThis(" + printType(l.itemType) + " t) {\n");
         if (isGeneratedTyp(l.itemType) && !l.ref) {
             sb.append("        t.setParent(this);\n");
@@ -1086,8 +1261,37 @@ public class Generator {
         sb.append("    public " + getCommonSupertypeType() + " set(int i, " + getCommonSupertypeType() + " newElement) {\n");
         sb.append("        return ((AsgList<" + printType(l.itemType) + ">) this).set(i, (" + printType(l.itemType) + ") newElement);\n");
         sb.append("    }\n\n");
+        String listType = l.getName(typePrefix);
+        String listImplType = listType + "Impl";
+        String treeUtil = getTreeUtilType();
+        sb.append("    @Override public java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        sb.append("        return e instanceof ").append(listType).append(";\n");
+        sb.append("    }\n\n");
         sb.append("    @Override public boolean structuralEquals(").append(getCommonSupertypeType()).append(" e) {\n");
-        sb.append("        return ").append(getTreeUtilType()).append(".structuralEquals(this, e);\n");
+        sb.append("        return zzStructuralEquals(e, 0);\n");
+        sb.append("    }\n\n");
+        sb.append("    @Override public boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" e, int depth) {\n");
+        sb.append("        if (this == e) return true;\n");
+        sb.append("        if (!(e instanceof ").append(listType).append(" other)) return false;\n");
+        sb.append("        int n = size();\n");
+        sb.append("        if (other.size() != n) return false;\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return ").append(treeUtil).append(".structuralEquals(this, e);\n");
+        sb.append("        for (int i = 0; i < n; i++) {\n");
+        sb.append("            if (!get(i).zzStructuralEquals(other.get(i), depth + 1)) return false;\n");
+        sb.append("        }\n");
+        sb.append("        return true;\n");
+        sb.append("    }\n\n");
+
+        // recursive copy, as far as the depth allows (see the copy of the constructors)
+        sb.append("    @Override public ").append(listImplType).append(" zzCopy(int depth) {\n");
+        sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return (").append(listImplType).append(") ")
+                .append(treeUtil).append(".copy(this, false);\n");
+        sb.append("        ").append(listImplType).append(" result = zzShallowCopy();\n");
+        sb.append("        int n = size();\n");
+        sb.append("        for (int i = 0; i < n; i++) {\n");
+        sb.append("            result.add((").append(printType(l.itemType)).append(") get(i).zzCopy(depth + 1));\n");
+        sb.append("        }\n");
+        sb.append("        return result;\n");
         sb.append("    }\n\n");
 
         // match methods for switch
@@ -1140,8 +1344,7 @@ public class Generator {
         sb.append(" {\n");
 
         sb.append("    public ").append(l.getName(typePrefix)).append(" copy() {\n");
-        sb.append("        return (").append(l.getName(typePrefix)).append(") ")
-                .append(getTreeUtilType()).append(".copy(this, false);\n");
+        sb.append("        return (").append(l.getName(typePrefix)).append(") zzCopy(0);\n");
         sb.append("    }\n\n");
 
         createCopyWithRefsMethod(l, sb);
@@ -1154,12 +1357,13 @@ public class Generator {
 
     private void createShallowCopyMethod(ListDef l, StringBuilder sb) {
         String implType = l.getName(typePrefix) + "Impl";
-        sb.append("    ").append(implType).append(" zzShallowCopy() {\n");
+        sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
+        sb.append("        result.ensureCapacity(size());\n");
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(l, field)) {
-                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
-                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+                // not through the setter, which counts a modification: a copy has had none
+                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
         sb.append("        return result;\n");
@@ -1218,6 +1422,21 @@ public class Generator {
                 .append("    default void trimToSize() { for (int i = 0, n = size(); i < n; i++) get(i).trimToSize(); }\n")
                 .append("    void setParent(").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" parent);\n")
                 .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
+                .append("    /** Replaces this element, in the list it is in, by the given elements in order (none removes it). */\n")
+                .append("    void replaceByAll(java.util.Collection<? extends ").append(getCommonSupertypeType()).append("> others);\n")
+                .append("    /** Internal, for the generated copy: this element without its children. */\n")
+                .append("    default ").append(getCommonSupertypeType()).append(" zzShallowCopy() { return null; }\n")
+                .append("    /** Internal, for the generated copy: this element and everything below it; depth is how far the recursion went. */\n")
+                .append("    default ").append(getCommonSupertypeType()).append(" zzCopy(int depth) { return copy(); }\n")
+                .append("    /** Internal, for the generated comparison: structuralEquals; depth is how far the recursion went. */\n")
+                .append("    default boolean zzStructuralEquals(").append(getCommonSupertypeType()).append(" other, int depth) { return structuralEquals(other); }\n")
+                .append("    /** Internal: compares generated type and fields; null delegates the entire comparison to a custom node. */\n")
+                .append("    default java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" other) { return null; }\n")
+                .append("    /** Internal: whether a generated copy has reference fields to repair. */\n")
+                .append("    default boolean zzHasReferences() { return false; }\n")
+                .append("    /** Internal: remaps reference fields in a shallow copy after every target has been copied. */\n")
+                .append("    default void zzRepairReferences(java.util.IdentityHashMap<").append(getCommonSupertypeType()).append(", ")
+                .append(getCommonSupertypeType()).append("> copies) {}\n")
                 .append("    boolean structuralEquals(").append(getCommonSupertypeType()).append(" elem);\n")
                 .append("    default java.util.List<Integer> pathTo(").append(getCommonSupertypeType()).append("  elem) {\n")
                 .append("        java.util.List<Integer> path = new java.util.ArrayList<>();\n")
@@ -1284,49 +1503,86 @@ public class Generator {
         sb.append("@SuppressWarnings({\"rawtypes\", \"unchecked\"})\n");
         sb.append("final class ").append(getTreeUtilType()).append(" {\n");
         sb.append("    private ").append(getTreeUtilType()).append("() {}\n\n");
+        sb.append("    /**\n");
+        sb.append("     * How deep the copy and the comparison of the elements recurse before they continue iteratively, which\n");
+        sb.append("     * is as fast and does not need the stack. Only the trees which are deeper than this use the loops below.\n");
+        sb.append("     */\n");
+        sb.append("    static final int MAX_DEPTH = 256;\n\n");
+        if (countsModifications()) {
+            sb.append("    /**\n");
+            sb.append("     * Counts a modification of the element and of everything below which it is: each element above it which counts\n");
+            sb.append("     * modifications (").append(String.join(", ", prog.countedTypes)).append(") counts one more.\n");
+            sb.append("     */\n");
+            sb.append("    static void modified(").append(elementType).append(" start) {\n");
+            sb.append("        for (").append(elementType).append(" e = start; e != null; e = e.getParent()) {\n");
+            for (String counted : prog.countedTypes) {
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount++;\n");
+            }
+            sb.append("        }\n");
+            sb.append("    }\n\n");
+        }
+        sb.append("    /** The iterative copy: of the trees which are too deep to recurse, and of a copy which keeps the references. */\n");
         sb.append("    static ").append(elementType).append(" copy(").append(elementType)
                 .append(" root, boolean withRefs) {\n");
         sb.append("        java.util.IdentityHashMap<").append(elementType).append(", ")
                 .append(elementType).append("> copies = withRefs ? new java.util.IdentityHashMap<>() : null;\n");
         sb.append("        java.util.ArrayList<").append(elementType)
-                .append("> originals = withRefs ? new java.util.ArrayList<>() : null;\n");
+                .append("> repairs = withRefs ? new java.util.ArrayList<>() : null;\n");
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> originalStack = new java.util.ArrayDeque<>();\n");
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> copyStack = new java.util.ArrayDeque<>();\n");
-        sb.append("        ").append(elementType).append(" rootCopy = shallowCopy(root);\n");
-        sb.append("        originalStack.push(root);\n");
-        sb.append("        copyStack.push(rootCopy);\n");
-        sb.append("        if (withRefs) { copies.put(root, rootCopy); originals.add(root); }\n");
+        sb.append("        ").append(elementType).append(" rootCopy = root.zzShallowCopy();\n");
+        sb.append("        if (root.size() != 0) { originalStack.push(root); copyStack.push(rootCopy); }\n");
+        sb.append("        if (withRefs) {\n");
+        sb.append("            copies.put(root, rootCopy);\n");
+        sb.append("            if (rootCopy.zzHasReferences()) repairs.add(rootCopy);\n");
+        sb.append("        }\n");
         sb.append("        while (!originalStack.isEmpty()) {\n");
         sb.append("            ").append(elementType).append(" original = originalStack.pop();\n");
         sb.append("            ").append(elementType).append(" copy = copyStack.pop();\n");
         sb.append("            for (int i = 0, n = original.size(); i < n; i++) {\n");
         sb.append("                ").append(elementType).append(" child = original.get(i);\n");
-        sb.append("                boolean generatedChild = isGenerated(child);\n");
+        sb.append("                ").append(elementType).append(" childShallow = child.zzShallowCopy();\n");
+        sb.append("                boolean generatedChild = childShallow != null;\n");
         sb.append("                ").append(elementType)
-                .append(" childCopy = generatedChild ? shallowCopy(child) : ")
+                .append(" childCopy = generatedChild ? childShallow : ")
                 .append("(withRefs ? child.copyWithRefs() : child.copy());\n");
         sb.append("                if (copy instanceof AsgList list) list.add(childCopy);\n");
         sb.append("                else copy.set(i, childCopy);\n");
-        sb.append("                if (generatedChild) {\n");
+        sb.append("                if (generatedChild && child.size() != 0) {\n");
         sb.append("                    originalStack.push(child);\n");
         sb.append("                    copyStack.push(childCopy);\n");
         sb.append("                }\n");
         sb.append("                if (withRefs) {\n");
         sb.append("                    copies.put(child, childCopy);\n");
-        sb.append("                    if (generatedChild) originals.add(child);\n");
+        sb.append("                    if (generatedChild && childCopy.zzHasReferences()) repairs.add(childCopy);\n");
         sb.append("                }\n");
         sb.append("            }\n");
         sb.append("        }\n");
         sb.append("        if (withRefs) {\n");
-        sb.append("            for (int i = 0, n = originals.size(); i < n; i++) {\n");
-        sb.append("                ").append(elementType).append(" original = originals.get(i);\n");
-        sb.append("                repairReferences(original, copies.get(original), copies);\n");
-        sb.append("            }\n");
+        sb.append("            for (int i = 0, n = repairs.size(); i < n; i++) repairs.get(i).zzRepairReferences(copies);\n");
         sb.append("        }\n");
+        if (countsModifications()) {
+            // the loop built the copy through the setters and the lists, which count: a copy has had no modification
+            sb.append("        resetModificationCounts(rootCopy);\n");
+        }
         sb.append("        return rootCopy;\n");
         sb.append("    }\n\n");
+
+        if (countsModifications()) {
+            sb.append("    private static void resetModificationCounts(").append(elementType).append(" root) {\n");
+            sb.append("        java.util.ArrayDeque<").append(elementType).append("> stack = new java.util.ArrayDeque<>();\n");
+            sb.append("        stack.push(root);\n");
+            sb.append("        while (!stack.isEmpty()) {\n");
+            sb.append("            ").append(elementType).append(" e = stack.pop();\n");
+            for (String counted : prog.countedTypes) {
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount = 0;\n");
+            }
+            sb.append("            for (int i = e.size() - 1; i >= 0; i--) stack.push(e.get(i));\n");
+            sb.append("        }\n");
+            sb.append("    }\n\n");
+        }
 
         sb.append("    static boolean structuralEquals(").append(elementType).append(" left, ")
                 .append(elementType).append(" right) {\n");
@@ -1341,11 +1597,12 @@ public class Generator {
         sb.append("        while (!leftStack.isEmpty()) {\n");
         sb.append("            ").append(elementType).append(" a = leftStack.pop();\n");
         sb.append("            ").append(elementType).append(" b = rightStack.pop();\n");
-        sb.append("            if (!isGenerated(a)) {\n");
+        sb.append("            java.lang.Boolean equal = a.zzLocalEquals(b);\n");
+        sb.append("            if (equal == null) {\n");
         sb.append("                if (!a.structuralEquals(b)) return false;\n");
         sb.append("                continue;\n");
         sb.append("            }\n");
-        sb.append("            if (!localEquals(a, b)) return false;\n");
+        sb.append("            if (!equal) return false;\n");
         sb.append("            int n = a.size();\n");
         sb.append("            if (b.size() != n) return false;\n");
         sb.append("            for (int i = 0; i < n; i++) {\n");
@@ -1431,83 +1688,6 @@ public class Generator {
         sb.append("        RenderListState(").append(elementType).append(" list) { this.list = list; }\n");
         sb.append("    }\n\n");
 
-        sb.append("    private static boolean localEquals(").append(elementType).append(" left, ")
-                .append(elementType).append(" right) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            String implType = c.getName(typePrefix) + "Impl";
-            String interfaceType = c.getName(typePrefix);
-            sb.append("        if (left instanceof ").append(implType).append(" source) {\n");
-            sb.append("            if (!(right instanceof ").append(interfaceType).append(" target)) return false;\n");
-            List<String> comparisons = new ArrayList<>();
-            for (Parameter p : c.parameters) {
-                if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
-                String leftExpr = "source.get" + toFirstUpper(p.name) + "()";
-                String rightExpr = "target.get" + toFirstUpper(p.name) + "()";
-                if (p.isRef && prog.hasElement(p.getTyp())) {
-                    comparisons.add(leftExpr + " == " + rightExpr);
-                } else {
-                    comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
-                }
-            }
-            sb.append("            return ").append(comparisons.isEmpty()
-                    ? "true" : String.join(" && ", comparisons)).append(";\n");
-            sb.append("        }\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            String implType = l.getName(typePrefix) + "Impl";
-            String interfaceType = l.getName(typePrefix);
-            sb.append("        if (left instanceof ").append(implType)
-                    .append(") return right instanceof ").append(interfaceType).append(";\n");
-        }
-        sb.append("        return false;\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static ").append(elementType).append(" shallowCopy(")
-                .append(elementType).append(" elem) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            String implType = c.getName(typePrefix) + "Impl";
-            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            String implType = l.getName(typePrefix) + "Impl";
-            sb.append("        if (elem instanceof ").append(implType).append(" value) return value.zzShallowCopy();\n");
-        }
-        sb.append("        throw new IllegalArgumentException(\"Unsupported AST implementation: \" + elem.getClass());\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static boolean isGenerated(").append(elementType).append(" elem) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            sb.append("        if (elem instanceof ").append(c.getName(typePrefix)).append("Impl) return true;\n");
-        }
-        for (ListDef l : prog.listDefs) {
-            sb.append("        if (elem instanceof ").append(l.getName(typePrefix)).append("Impl) return true;\n");
-        }
-        sb.append("        return false;\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private static void repairReferences(").append(elementType).append(" original, ")
-                .append(elementType).append(" copy, java.util.IdentityHashMap<")
-                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
-        for (ConstructorDef c : prog.constructorDefs) {
-            List<Parameter> refs = new ArrayList<>();
-            for (Parameter p : c.parameters) {
-                if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
-            }
-            if (refs.isEmpty()) continue;
-            String implType = c.getName(typePrefix) + "Impl";
-            sb.append("        if (original instanceof ").append(implType).append(" source) {\n");
-            sb.append("            ").append(implType).append(" target = (").append(implType).append(") copy;\n");
-            for (Parameter p : refs) {
-                sb.append("            ").append(elementType).append(" mapped_").append(p.name)
-                        .append(" = copies.get(source.get").append(toFirstUpper(p.name)).append("());\n");
-                sb.append("            if (mapped_").append(p.name).append(" != null) target.set")
-                        .append(toFirstUpper(p.name)).append("((").append(printType(p.getTyp()))
-                        .append(") mapped_").append(p.name).append(");\n");
-            }
-            sb.append("            return;\n");
-            sb.append("        }\n");
-        }
-        sb.append("    }\n");
         sb.append("}\n");
     }
 

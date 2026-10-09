@@ -19,7 +19,8 @@ spec returns [Program prog]:
 	 $prog = new Program($p.text);
 	}
 	('typeprefix:' pre=ID  { $prog.setTypePrefix($pre.text); })?
-	
+	('modification counts:' c1=ID { $prog.addCountedType($c1.text); } (',' c2=ID { $prog.addCountedType($c2.text); })*)?
+
 	'abstract syntax:'
 	element[$prog]*
 	'attributes:'
