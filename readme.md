@@ -219,6 +219,40 @@ stmt.setParent(null); // Clear parent first
 list2.add(stmt); // ✅ Now it can be moved
 ```
 
+### Knowing What Changed: Modification Counts
+
+An analysis which is kept between passes, or a pass which only has to look at what changed, needs to know whether a
+part of the tree is the part it saw. A spec can name the constructors which count the modifications of themselves
+and of everything below them:
+
+```
+package my.ast
+typeprefix: My
+modification counts: Function, Program
+
+abstract syntax:
+...
+```
+
+`Function` and `Program` have an `int modificationCount()` then. It goes up by one for each change of the element or
+of anything below it, and each element above which counts changes too (a function and the program it is in):
+
+```java
+int seen = function.modificationCount();
+// ... passes ...
+if (function.modificationCount() == seen) {
+    // nothing in it changed: what you computed from it is still right
+}
+```
+
+* A change is a setter (of a child or of any other field), anything done to a list (add, remove, set, clear, sort,
+  `replaceEach`, an iterator, a `subList`), and a replacement (`replaceBy`, `replaceByAll`). Reading counts nothing.
+* A node which is moved out of a tree counts for the tree it was in, and for the tree it is put into.
+* A copy starts at zero, and building a tree (the factory methods) counts nothing. What is changed in a tree which
+  is not a part of a counting element counts for no one.
+* It wraps around after 2^32 modifications; compare for equality.
+* A spec without `modification counts:` gets no counting code at all.
+
 ### Advanced Mutations
 
 #### 1. Constant Folding

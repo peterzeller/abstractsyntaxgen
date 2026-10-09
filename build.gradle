@@ -11,7 +11,7 @@ description = """Abstract Syntax Generator"""
 
 // Define directories and file patterns
 String genDir = "$projectDir/src-generated"
-def testParseqFiles = fileTree(dir: 'src/test/resources', include: ['test-expr.parseq', 'test-stmt.parseq', 'test-refs.parseq', 'test-inline.parseq'])
+def testParseqFiles = fileTree(dir: 'src/test/resources', include: ['test-expr.parseq', 'test-stmt.parseq', 'test-refs.parseq', 'test-inline.parseq', 'test-counted.parseq'])
 def testGenDir = file("$buildDir/generated/sources/test-ast/java")
 def pkgPattern = ~/package\s+(\S+)\s*;?/
 

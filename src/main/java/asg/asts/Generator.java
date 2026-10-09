@@ -40,6 +40,25 @@ public class Generator {
         this.typePrefix = prog.getTypePrefix();
         this.packageName = prog.getPackageName();
         this.mainName = prog.getFactoryName();
+        for (String counted : prog.countedTypes) {
+            if (prog.constructorDefs.stream().noneMatch(c -> c.getName().equals(counted))) {
+                throw new Error("The modification counts name " + counted + ", which is not a constructor of the spec.");
+            }
+        }
+    }
+
+    /** Whether the elements count their modifications, which is when the spec names a type which counts them. */
+    private boolean countsModifications() {
+        return !prog.countedTypes.isEmpty();
+    }
+
+    private boolean isCounted(ConstructorDef c) {
+        return prog.countedTypes.contains(c.getName());
+    }
+
+    /** The line which counts a change of this element, which every setter ends with; none if nothing counts. */
+    private String modifiedStatement() {
+        return countsModifications() ? "        " + getTreeUtilType() + ".modified(this);\n" : "";
     }
 
 
@@ -272,6 +291,7 @@ public class Generator {
         // create constructor
         createConstructor(c, sb);
         createShallowCopyMethod(c, sb);
+        createModificationCount(c, sb);
 
         // get/set parent method:
         createGetSetParentMethods(sb);
@@ -319,6 +339,15 @@ public class Generator {
 
         sb.append("}\n");
         fileGenerator.createFile(c.getName(typePrefix) + "Impl.java", sb);
+    }
+
+    private void createModificationCount(ConstructorDef c, StringBuilder sb) {
+        if (!isCounted(c)) {
+            return;
+        }
+        sb.append("    /** Counted by the changes of this element and of everything below it, see ").append(getTreeUtilType()).append(".modified. */\n");
+        sb.append("    int zzModificationCount;\n");
+        sb.append("    @Override public int modificationCount() { return zzModificationCount; }\n\n");
     }
 
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
@@ -401,6 +430,7 @@ public class Generator {
             sb.append("    public void set" + toFirstUpper(field.getFieldName())
                     + "(" + field.getFieldType() + " " + field.getFieldName() + ") {\n");
             sb.append("        this." + field.getFieldName() + " = " + field.getFieldName() + ";\n");
+            sb.append(modifiedStatement());
             sb.append("    }\n");
         }
     }
@@ -571,8 +601,8 @@ public class Generator {
         }
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(c, field)) {
-                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
-                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+                // not through the setter, which counts a modification: a copy has had none
+                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
         sb.append("        return result;\n");
@@ -688,7 +718,9 @@ public class Generator {
                     sb.append("        " + p.name + ".setParent(this);\n");
                 }
             }
-            sb.append("        this." + p.name + " = " + p.name + ";\n" + "    } \n");
+            sb.append("        this." + p.name + " = " + p.name + ";\n");
+            sb.append(modifiedStatement());
+            sb.append("    } \n");
             // getter
             sb.append("    public " + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "() { return " + p.name + "; }\n\n");
         }
@@ -880,6 +912,15 @@ public class Generator {
         sb.append("    ").append(c.getName(typePrefix)).append(" copy();\n");
         sb.append("    ").append(c.getName(typePrefix)).append(" copyWithRefs();\n");
         sb.append("    void clearAttributesLocal();\n");
+        if (isCounted(c)) {
+            sb.append("    /**\n");
+            sb.append("     * How many modifications this element and everything below it have had: it changes when a setter, a list or a\n");
+            sb.append("     * replacement changes the element or something below it, and it stays the same while nothing does (a copy starts\n");
+            sb.append("     * at zero; what is moved out of the tree counts for the tree it was in). Compare it with the number you saw to\n");
+            sb.append("     * know whether the element is the same. It wraps around after 2^32 modifications.\n");
+            sb.append("     */\n");
+            sb.append("    int modificationCount();\n");
+        }
 
         createAttributeStubs(c, sb);
         createFieldStubs(c, sb);
@@ -1196,6 +1237,13 @@ public class Generator {
 
         createReplaceByMethod(sb);
 
+        if (countsModifications()) {
+            // a change of the list is a change of the element it is a part of
+            sb.append("    @Override protected void zzModified() {\n");
+            sb.append("        if (parent != null) ").append(getTreeUtilType()).append(".modified(parent);\n");
+            sb.append("    }\n\n");
+        }
+
         sb.append("    protected void other_setParentToThis(" + printType(l.itemType) + " t) {\n");
         if (isGeneratedTyp(l.itemType) && !l.ref) {
             sb.append("        t.setParent(this);\n");
@@ -1314,8 +1362,8 @@ public class Generator {
         sb.append("        result.ensureCapacity(size());\n");
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(l, field)) {
-                sb.append("        result.set").append(toFirstUpper(field.getFieldName()))
-                        .append("(get").append(toFirstUpper(field.getFieldName())).append("());\n");
+                // not through the setter, which counts a modification: a copy has had none
+                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
         sb.append("        return result;\n");
@@ -1460,6 +1508,19 @@ public class Generator {
         sb.append("     * is as fast and does not need the stack. Only the trees which are deeper than this use the loops below.\n");
         sb.append("     */\n");
         sb.append("    static final int MAX_DEPTH = 256;\n\n");
+        if (countsModifications()) {
+            sb.append("    /**\n");
+            sb.append("     * Counts a modification of the element and of everything below which it is: each element above it which counts\n");
+            sb.append("     * modifications (").append(String.join(", ", prog.countedTypes)).append(") counts one more.\n");
+            sb.append("     */\n");
+            sb.append("    static void modified(").append(elementType).append(" start) {\n");
+            sb.append("        for (").append(elementType).append(" e = start; e != null; e = e.getParent()) {\n");
+            for (String counted : prog.countedTypes) {
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount++;\n");
+            }
+            sb.append("        }\n");
+            sb.append("    }\n\n");
+        }
         sb.append("    /** The iterative copy: of the trees which are too deep to recurse, and of a copy which keeps the references. */\n");
         sb.append("    static ").append(elementType).append(" copy(").append(elementType)
                 .append(" root, boolean withRefs) {\n");
@@ -1502,8 +1563,26 @@ public class Generator {
         sb.append("        if (withRefs) {\n");
         sb.append("            for (int i = 0, n = repairs.size(); i < n; i++) repairs.get(i).zzRepairReferences(copies);\n");
         sb.append("        }\n");
+        if (countsModifications()) {
+            // the loop built the copy through the setters and the lists, which count: a copy has had no modification
+            sb.append("        resetModificationCounts(rootCopy);\n");
+        }
         sb.append("        return rootCopy;\n");
         sb.append("    }\n\n");
+
+        if (countsModifications()) {
+            sb.append("    private static void resetModificationCounts(").append(elementType).append(" root) {\n");
+            sb.append("        java.util.ArrayDeque<").append(elementType).append("> stack = new java.util.ArrayDeque<>();\n");
+            sb.append("        stack.push(root);\n");
+            sb.append("        while (!stack.isEmpty()) {\n");
+            sb.append("            ").append(elementType).append(" e = stack.pop();\n");
+            for (String counted : prog.countedTypes) {
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount = 0;\n");
+            }
+            sb.append("            for (int i = e.size() - 1; i >= 0; i--) stack.push(e.get(i));\n");
+            sb.append("        }\n");
+            sb.append("    }\n\n");
+        }
 
         sb.append("    static boolean structuralEquals(").append(elementType).append(" left, ")
                 .append(elementType).append(" right) {\n");
