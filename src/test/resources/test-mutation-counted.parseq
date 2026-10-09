@@ -1,0 +1,12 @@
+package test.mutation.counted
+typeprefix: MC
+modification counts: Function
+abstract syntax:
+Root(FunctionList functions)
+Ancestor = Top(Root root) | Wrap(Ancestor child)
+FunctionList * Function
+Function(int version, StmtList body)
+StmtList * Stmt
+Stmt = Assign(Num value) | Block(StmtList body)
+Num(int number)
+attributes:

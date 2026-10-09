@@ -11,7 +11,7 @@ description = """Abstract Syntax Generator"""
 
 // Define directories and file patterns
 String genDir = "$projectDir/src-generated"
-def testParseqFiles = fileTree(dir: 'src/test/resources', include: ['test-expr.parseq', 'test-stmt.parseq', 'test-refs.parseq', 'test-inline.parseq', 'test-counted.parseq'])
+def testParseqFiles = fileTree(dir: 'src/test/resources', include: ['test-expr.parseq', 'test-stmt.parseq', 'test-refs.parseq', 'test-inline.parseq', 'test-counted.parseq', 'test-cache.parseq', 'test-mutation-counted.parseq', 'test-mutation-plain.parseq', 'test-nested-counted.parseq'])
 def testGenDir = file("$buildDir/generated/sources/test-ast/java")
 def pkgPattern = ~/package\s+(\S+)\s*;?/
 
@@ -87,6 +87,10 @@ tasks.register('generateTestAsts') {
 
 
 test {
+    // Keep the artifact baseline at 25 while exercising generated code on newer HotSpot releases.
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(providers.gradleProperty('testJavaVersion').getOrElse('25').toInteger())
+    }
     useJUnitPlatform()
     dependsOn 'generateTestAsts'
 

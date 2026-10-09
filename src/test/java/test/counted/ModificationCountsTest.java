@@ -35,6 +35,17 @@ class ModificationCountsTest {
     }
 
     @Test
+    void aBulkTransferCountsOnceForEachChangedListAndRetainsChildOwnership() {
+        var old = counts();
+        second.getBody().addAllMoved(first.getBody());
+        assertTrue(first.getBody().isEmpty());
+        assertSame(second.getBody(), assign.getParent());
+        assertEquals(new Counts(old.first + 1, old.second + 1, old.root + 2), counts());
+        assertFalse(first.getBody().addAllMoved(test.counted.TC.StmtList()));
+        assertEquals(new Counts(old.first + 1, old.second + 1, old.root + 2), counts());
+    }
+
+    @Test
     void aNewTreeHasHadNoModification() {
         assertEquals(new Counts(0, 0, 0), counts());
     }
