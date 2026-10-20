@@ -1,6 +1,6 @@
 # Abstract Syntax Generator
 
-[![Java CI with Gradle](https://github.com/peterzeller/abstractsyntaxgen/actions/workflows/gradle.yml/badge.svg)](https://github.com/peterzeller/abstractsyntaxgen/actions/workflows/gradle.yml)
+[CI on Jenkins](https://jenkins.oxbot.stream/job/abstractsyntaxgen/)
 [![](https://jitpack.io/v/peterzeller/abstractsyntaxgen.svg)](https://jitpack.io/#peterzeller/abstractsyntaxgen)
 
 Generate Java classes for representing mutable abstract syntax trees with powerful mutation capabilities for compiler optimizations.
