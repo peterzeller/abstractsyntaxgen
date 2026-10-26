@@ -481,3 +481,23 @@ independent lanes needed for SIMD; native implementations should be considered o
 - Inspired by the visitor pattern and algebraic data types
 - Built for the [WurstScript](https://github.com/wurstscript/WurstScript) compiler
 
+
+## Detached node codecs
+
+Each schema also generates `<typeprefix>NodeCodec` (or `NodeCodec` with no prefix).
+`encode(node, encoder)` describes one node: constructors and persistent fields in `Data.fields`,
+list entries in `Data.items`. It calls `child` for owned children, `reference` for reference
+operands, and `attribute(field, value)` for other metadata. It does not walk children or
+references itself. Computed attribute caches, parents and modification counts are excluded;
+fields marked `@ignoreForEquality` are included.
+
+The client chooses an immutable value type `V`: for example owned node indices, symbolic external
+keys and frozen metadata records. The encoder must detach mutable metadata, including nested
+collections and references inside it, and encode nulls as explicit values. `Data` copies its two
+lists; it cannot enforce immutability of client values. Names of node kinds and fields are schema
+tags, not semantic identities or a stable disk format.
+
+`decode(data, decoder)` constructs private nodes from those values. The decoder returns fresh owned
+children, resolves symbolic references in its compilation context, and restores mutable metadata
+into request-owned copies. It must resolve declarations and cycles before exposing a graph to a
+compiler pass. The codec never follows an external target or supplies a placeholder function body.

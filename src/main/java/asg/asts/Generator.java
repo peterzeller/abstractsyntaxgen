@@ -264,6 +264,10 @@ public class Generator {
 
 
         generateFactoryClass();
+        StringBuilder codec = new StringBuilder();
+        printProlog(codec);
+        new NodeCodecGenerator(prog, this::printType, this::hasField).write(codec);
+        fileGenerator.createFile(typePrefix + "NodeCodec.java", codec);
 
     }
 

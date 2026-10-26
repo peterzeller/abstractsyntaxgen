@@ -44,4 +44,11 @@ LeafTarget()
 LeafReference(ref LeafTarget leafTarget)
 LeafPair(LeafReference reference, LeafTarget leafTarget)
 
+ReferenceVars * ref VarDecl
+CodecMetadata(java.util.List<String> values)
+IgnoredMetadata(@ignoreForEquality String marker)
+
 attributes:
+
+String Element.codecNote
+java.util.List<String> CodecMetadata.memo
