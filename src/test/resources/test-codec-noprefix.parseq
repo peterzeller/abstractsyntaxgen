@@ -1,0 +1,6 @@
+package test.codec
+
+abstract syntax:
+Value(int number)
+
+attributes:
