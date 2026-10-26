@@ -1,0 +1,47 @@
+/** Optional debug mutation scopes; disabled checks disappear behind a static final branch. */
+public final class __PREFIX__NodeOwnership {
+    private __PREFIX__NodeOwnership() { }
+    public static final boolean CHECKS=Boolean.getBoolean("asg.checkOwnership");
+    private static final ThreadLocal<Scope> CURRENT=new ThreadLocal<>();
+    public static final class Scope implements AutoCloseable {
+        private final Scope previous;
+        private final Thread thread=Thread.currentThread();
+        private final Set<__PREFIX__Element> allowed=Collections.newSetFromMap(new IdentityHashMap<>());
+        private boolean closed;
+        private Scope(__PREFIX__Element root) {
+            if(!CHECKS) throw new IllegalStateException("Mutation scopes require -Dasg.checkOwnership=true");
+            __PREFIX__NodeGraphs.validate(root);previous=CURRENT.get();
+            ArrayDeque<__PREFIX__Element> pending=new ArrayDeque<>();pending.push(root);
+            while(!pending.isEmpty()) {
+                var node=pending.pop();allowed.add(node);
+                __PREFIX__NodeCodec.encode(node,new __PREFIX__NodeCodec.Encoder<Integer>() {
+                    public Integer child(__PREFIX__Element value) { pending.push(value);return 0; }
+                    public Integer reference(__PREFIX__Element value) { return 0; }
+                    public Integer attribute(String field,Object value) { return 0; }
+                });
+            }
+            CURRENT.set(this);
+        }
+        public void close() {
+            if(closed || thread!=Thread.currentThread() || CURRENT.get()!=this) throw new IllegalStateException("Mutation scopes must close in stack order on their opening thread");
+            CURRENT.set(previous);closed=true;
+        }
+    }
+    public static Scope scope(__PREFIX__Element root) { return new Scope(root); }
+    static void created(__PREFIX__Element node) {
+        if(CHECKS) { Scope scope=CURRENT.get();for(;scope!=null;scope=scope.previous) scope.allowed.add(node); }
+    }
+    static void before(__PREFIX__Element node) {
+        if(CHECKS) {
+            Scope scope=CURRENT.get();
+            if(scope!=null && !scope.allowed.contains(node)) throw new IllegalStateException("Attempt to mutate a foreign node: "+node.getClass().getSimpleName());
+        }
+    }
+    static void attach(__PREFIX__Element parent,__PREFIX__Element child) {
+        Objects.requireNonNull(child);before(parent);before(child);
+        if(child.getParent()!=null) throw new Error("Cannot change parent of element "+child.getClass().getSimpleName()+", as it is already used in another tree. Use the copy method to create a new tree or remove the tree from its old parent or set the parent to null before moving the tree. ");
+        // A leaf cannot contain the destination. A newly constructed parent has no ancestors.
+        if(child.size()!=0 || child==parent) for(var ancestor=parent;ancestor!=null;ancestor=ancestor.getParent())
+            if(ancestor==child) throw new IllegalArgumentException("Cannot attach an ancestor to its descendant");
+    }
+}

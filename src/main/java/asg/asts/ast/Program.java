@@ -15,6 +15,9 @@ public class Program {
 	public final List<String> countedTypes = new ArrayList<>();
 	private String packageName;
 	private String typePrefix = "";
+    private String metadataAdapter;
+    public String getMetadataAdapter() { return metadataAdapter; }
+    public void setMetadataAdapter(String metadataAdapter) { this.metadataAdapter=metadataAdapter; }
 
 
 	public Program(String packageName) {
@@ -88,7 +91,11 @@ public class Program {
 		attrDefs.add(new AttributeDef(parameters, typ, attr, docStr, returnType, implementedBy, circular));
 	}
 
-	public void addAttributeField(String fieldType, String typ, String fieldName, String doc) {
+	public void addAttributeField(String fieldType, String typ, String fieldName, String doc, boolean tracked) {
+        fieldDefs.add(new FieldDef(fieldType, typ, fieldName, doc, tracked));
+    }
+
+    public void addAttributeField(String fieldType, String typ, String fieldName, String doc) {
 		String docStr = doc != null ? doc : "";
 		fieldDefs.add(new FieldDef(fieldType, typ, fieldName, doc));
 		// ($t.name, $elem.text, $attrName.text, $doc.text)

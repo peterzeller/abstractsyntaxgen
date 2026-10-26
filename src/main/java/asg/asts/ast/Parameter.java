@@ -3,12 +3,21 @@ package asg.asts.ast;
 public final class Parameter {
 
 	private final boolean ignoreEquality;
+    private final boolean tracked;
+    private boolean source;
+    public boolean isSource() { return source; }
+    public void setSource(boolean source) { this.source = source; }
 	private final String typ;
 	public final  String name;
 	public final boolean isRef;
 	
 
 	public Parameter(boolean isRef, boolean ignoreEquality, String typ, String name) {
+        this(isRef, ignoreEquality, false, typ, name);
+    }
+
+    public Parameter(boolean isRef, boolean ignoreEquality, boolean tracked, String typ, String name) {
+        this.tracked = tracked;
 		this.isRef = isRef;
 		this.ignoreEquality = ignoreEquality;
 		this.typ = typ;
@@ -16,6 +25,7 @@ public final class Parameter {
 	}
 	
 	public Parameter(String typ, String name) {
+        this.tracked = false;
 		this.ignoreEquality = false;
 		this.isRef = false;
 		this.typ = typ;
@@ -46,7 +56,9 @@ public final class Parameter {
 		return typ;
 	}
 
-	public boolean isIgnoreEquality() {
+	public boolean isTracked() { return tracked; }
+
+    public boolean isIgnoreEquality() {
 		return ignoreEquality;
 	}
 

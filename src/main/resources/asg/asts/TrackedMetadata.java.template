@@ -1,0 +1,364 @@
+import java.util.function.*;
+
+/** Owned metadata containers. Node/value leaves remain references; container structure is detached and tracked. */
+final class __PREFIX__TrackedMetadata {
+    private __PREFIX__TrackedMetadata() { }
+
+    static final class Owner {
+        private final Runnable before;
+        private final IntConsumer changed;
+        private final Context context = new Context(this);
+        private Copier batch;
+        Owner(Runnable before, IntConsumer changed) { this.before=before; this.changed=changed; }
+        void begin() {
+            if(batch!=null) throw new IllegalStateException("Metadata import already active");
+            batch=new Copier(context);
+        }
+        void end() { batch=null; }
+        Object copy(Object value) { return (batch==null ? new Copier(context) : batch).copy(value); }
+    }
+    static final class Handle<T> {
+        private final Context context;
+        private final T value;
+        private boolean attached = true;
+        private final int domain;
+        @SuppressWarnings("unchecked")
+        Handle(Owner owner, Object input, int domain) {
+            this.domain=domain;
+            context=owner.context;
+            value=(T)owner.copy(input);
+            if(value instanceof Box box) context.link(box,true,domain);
+        }
+        T value() { return value; }
+        void detach() {
+            if(!attached) return;
+            attached=false;
+            if(value instanceof Box box) context.link(box,false,domain);
+        }
+    }
+
+    private record Pair(Object left,Object right) { }
+    static boolean equal(Object left,Object right) {
+        ArrayDeque<Pair> pending=new ArrayDeque<>(); pending.push(new Pair(left,right));
+        IdentityHashMap<Object,Set<Object>> seen=new IdentityHashMap<>();
+        while(!pending.isEmpty()) {
+            Pair pair=pending.pop(); Object a=pair.left(),b=pair.right();
+            if(a==b) continue;
+            if(a==null || b==null) return false;
+            if(!seen.computeIfAbsent(a,k->Collections.newSetFromMap(new IdentityHashMap<>())).add(b)) continue;
+            if(a instanceof List<?> first && b instanceof List<?> second) {
+                if(first.size()!=second.size()) return false;
+                Iterator<?> other=second.iterator();
+                for(Object value:first) pending.push(new Pair(value,other.next()));
+            } else if(a instanceof Map<?,?> first && b instanceof Map<?,?> second) {
+                if(first.size()!=second.size()) return false;
+                for(Map.Entry<?,?> entry:first.entrySet()) {
+                    if(!second.containsKey(entry.getKey())) return false;
+                    pending.push(new Pair(entry.getValue(),second.get(entry.getKey())));
+                }
+            } else if(a instanceof Set<?> first && b instanceof Set<?> second) {
+                if(first.size()!=second.size() || !second.containsAll(first)) return false;
+            } else if(!Objects.equals(a,b)) return false;
+        }
+        return true;
+    }
+
+    private interface Box extends __PREFIX__NodeGraphs.Container {
+        State state();
+        Iterable<?> nestedValues();
+    }
+    private static final class State {
+        final Context context;
+        final int[] links=new int[2];
+        int mask() { return (links[0]!=0 ? 1 : 0) | (links[1]!=0 ? 2 : 0); }
+        State(Context context) { this.context = context; }
+        void before() { Owner owner=context.owner.get(); if(mask()!=0 && owner!=null) owner.before.run(); }
+        void changed() { Owner owner=context.owner.get(); if(mask()!=0 && owner!=null) owner.changed.accept(mask()); }
+    }
+    private static final class Context {
+        final java.lang.ref.WeakReference<Owner> owner;
+        Context(Owner owner) { this.owner=new java.lang.ref.WeakReference<>(owner); }
+        void link(Box root, boolean attach, int domain) {
+            int slot=domain==1 ? 0 : 1;
+            ArrayDeque<Box> pending = new ArrayDeque<>(); pending.push(root);
+            while (!pending.isEmpty()) {
+                Box box = pending.pop(); State state = box.state();
+                if (attach) { if (state.links[slot]++ != 0) continue; }
+                else { if (--state.links[slot] != 0) continue; }
+                for (Object child : box.nestedValues()) if (child instanceof Box nested) pending.push(nested);
+            }
+        }
+        void replace(Box owner, Object old, Object next) {
+            if (old == next) return;
+            for(int slot=0;slot<2;slot++) if(owner.state().links[slot]!=0) {
+                if (next instanceof Box nested) link(nested, true, 1 << slot);
+                if (old instanceof Box nested) link(nested, false, 1 << slot);
+            }
+        }
+    }
+
+    private static void key(Object value) {
+        if (value instanceof Collection<?> || value instanceof Map<?, ?> || value != null && value.getClass().isArray()) {
+            throw new IllegalArgumentException("Owned metadata keys and set members must be stable values or node references");
+        }
+    }
+    private static void cycle(Box owner, Object candidate) {
+        if (!(candidate instanceof Box first)) return;
+        Set<Box> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Box> pending = new ArrayDeque<>(); pending.push(first);
+        while (!pending.isEmpty()) {
+            Box box = pending.pop();
+            if (box == owner) throw new IllegalArgumentException("Cyclic owned metadata containers are not supported; use node references for cycles");
+            if (!seen.add(box)) continue;
+            for (Object value : box.nestedValues()) if (value instanceof Box child) pending.push(child);
+        }
+    }
+    private static final class Frame {
+        final Object input;
+        final Box output;
+        final Iterator<?> items;
+        Frame(Object input, Box output) {
+            this.input = input; this.output = output;
+            items = input instanceof Map<?, ?> map ? map.entrySet().iterator() : ((Collection<?>) input).iterator();
+        }
+        void append(Object mapKey, Object value) {
+            if (output instanceof MapBox map) map.data.put(mapKey, value);
+            else if (output instanceof ListBox list) list.data.add(value);
+            else ((SetBox) output).data.add(value);
+        }
+    }
+    private static final class Copier {
+        final Context context;
+        final IdentityHashMap<Object, Box> copies = new IdentityHashMap<>();
+        final Set<Object> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+        Copier(Context context) { this.context = context; }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private Box empty(Object input) {
+            if (input instanceof List<?>) return new ListBox(context);
+            if (input instanceof Map<?, ?>) {
+                Map<?, ?> original = input instanceof MapBox box ? box.data : (Map<?, ?>) input;
+                Map<Object,Object> data = original instanceof SortedMap sorted ? new TreeMap<>(sorted.comparator()) : original instanceof IdentityHashMap ? new IdentityHashMap<>() : new LinkedHashMap<>();
+                return new MapBox(context, data);
+            }
+            if (input instanceof Set<?>) {
+                Set<?> original = input instanceof SetBox box ? box.data : (Set<?>) input;
+                Set<Object> data = original instanceof SortedSet sorted ? new TreeSet<>(sorted.comparator()) : new LinkedHashSet<>();
+                return new SetBox(context, data);
+            }
+            throw new IllegalArgumentException("Unsupported owned metadata container: " + input.getClass().getName());
+        }
+        private Object shallow(Object input) {
+            if (input == null) return null;
+            if (input instanceof Box box && box.state().context == context) return box;
+            if (!(input instanceof Collection<?>) && !(input instanceof Map<?, ?>)) {
+                if (input.getClass().isArray()) throw new IllegalArgumentException("Mutable arrays need an explicit metadata adapter");
+                return input;
+            }
+            Box old = copies.get(input);
+            if (old != null) {
+                if (visiting.contains(input)) throw new IllegalArgumentException("Cyclic owned metadata containers are not supported; use node references for cycles");
+                return old;
+            }
+            Box result = empty(input); copies.put(input, result); return result;
+        }
+        Object copy(Object input) {
+            boolean already = copies.containsKey(input);
+            Object result = shallow(input);
+            if (!(result instanceof Box root) || input instanceof Box box && box.state().context == context || already) return result;
+            // A completed alias has already been filled by a previous call on this copier.
+            {
+                ArrayDeque<Frame> pending = new ArrayDeque<>();
+                visiting.add(input); pending.push(new Frame(input, root));
+                while (!pending.isEmpty()) {
+                    Frame frame = pending.peek();
+                    if (!frame.items.hasNext()) { visiting.remove(frame.input); pending.pop(); continue; }
+                    Object raw = frame.items.next(), mapKey = null;
+                    if (frame.output instanceof MapBox) {
+                        Map.Entry<?,?> entry = (Map.Entry<?,?>) raw;
+                        mapKey = entry.getKey(); key(mapKey); raw = entry.getValue();
+                    } else if (frame.output instanceof SetBox) key(raw);
+                    boolean known = copies.containsKey(raw);
+                    Object child = shallow(raw);
+                    frame.append(mapKey, child);
+                    if (child instanceof Box nested && !known && !(raw instanceof Box same && same.state().context == context)) {
+                        visiting.add(raw); pending.push(new Frame(raw, nested));
+                    }
+                }
+            }
+            return result;
+        }
+    }
+
+    private static final class ListBox extends AbstractList<Object> implements RandomAccess, Box {
+        final State state;
+        final ArrayList<Object> data = new ArrayList<>();
+        ListBox(Context context) { state = new State(context); }
+        public State state() { return state; }
+        public Iterable<?> nestedValues() { return data; }
+        public __PREFIX__NodeGraphs.Parts zzParts() {
+            List<Object> values=new ArrayList<>();String kind="list";
+            if(data instanceof Set<?>) {
+                kind="set";
+                if(data instanceof SortedSet<?> sorted) { kind="sorted-set";values.add(sorted.comparator()); }
+            }
+            values.addAll(data);return new __PREFIX__NodeGraphs.Parts(kind,values);
+        }
+        public Object get(int index) { return data.get(index); }
+        public int size() { return data.size(); }
+        private Object prepare(Object value, Copier copier) { Object next = copier.copy(value); cycle(this, next); return next; }
+        public Object set(int index, Object value) {
+            Object old = data.get(index), next = prepare(value, new Copier(state.context));
+            if (old == next) return old;
+            state.before(); data.set(index, next); state.context.replace(this, old, next); state.changed(); return old;
+        }
+        public void add(int index, Object value) {
+            Objects.checkIndex(index, data.size() + 1);
+            Object next = prepare(value, new Copier(state.context));
+            state.before(); data.add(index, next); modCount++; state.context.replace(this, null, next); state.changed();
+        }
+        public boolean addAll(int index, Collection<?> values) {
+            Objects.checkIndex(index, data.size() + 1);
+            ArrayList<Object> prepared = new ArrayList<>(values.size()); Copier copier = new Copier(state.context);
+            for (Object value : values) prepared.add(prepare(value, copier));
+            if (prepared.isEmpty()) return false;
+            state.before(); data.addAll(index, prepared); modCount++;
+            for (Object value : prepared) state.context.replace(this, null, value);
+            state.changed(); return true;
+        }
+        public boolean addAll(Collection<?> values) { return addAll(size(), values); }
+        public Object remove(int index) {
+            data.get(index); state.before(); Object old = data.remove(index); modCount++;
+            state.context.replace(this, old, null); state.changed(); return old;
+        }
+        protected void removeRange(int from, int to) {
+            Objects.checkFromToIndex(from, to, data.size()); if (from == to) return;
+            ArrayList<Object> old = new ArrayList<>(data.subList(from, to));
+            state.before(); data.subList(from, to).clear(); modCount++;
+            for (Object value : old) state.context.replace(this, value, null);
+            state.changed();
+        }
+        public void clear() { removeRange(0, size()); }
+    }
+    private static final class SetBox extends AbstractSet<Object> implements Box {
+        final State state;
+        final Set<Object> data;
+        SetBox(Context context, Set<Object> data) { state = new State(context); this.data = data; }
+        public State state() { return state; }
+        public Iterable<?> nestedValues() { return data; }
+        public __PREFIX__NodeGraphs.Parts zzParts() {
+            List<Object> values=new ArrayList<>();String kind="list";
+            if(data instanceof Set<?>) {
+                kind="set";
+                if(data instanceof SortedSet<?> sorted) { kind="sorted-set";values.add(sorted.comparator()); }
+            }
+            values.addAll(data);return new __PREFIX__NodeGraphs.Parts(kind,values);
+        }
+        public int size() { return data.size(); }
+        public boolean contains(Object value) { return data.contains(value); }
+        public boolean add(Object value) {
+            key(value); if (data.contains(value)) return false;
+            state.before(); boolean added = data.add(value); if (added) state.changed(); return added;
+        }
+        public Iterator<Object> iterator() {
+            Iterator<Object> iterator = data.iterator();
+            return new Iterator<>() {
+                public boolean hasNext() { return iterator.hasNext(); }
+                public Object next() { return iterator.next(); }
+                public void remove() { state.before(); iterator.remove(); state.changed(); }
+            };
+        }
+        public void clear() { if (data.isEmpty()) return; state.before(); data.clear(); state.changed(); }
+    }
+    private static final class MapBox extends AbstractMap<Object,Object> implements Box {
+        final State state;
+        final Map<Object,Object> data;
+        int epoch;
+        MapBox(Context context, Map<Object,Object> data) { state = new State(context); this.data = data; }
+        public State state() { return state; }
+        public Iterable<?> nestedValues() { return data.values(); }
+        public __PREFIX__NodeGraphs.Parts zzParts() {
+            List<Object> values=new ArrayList<>();String kind=data instanceof IdentityHashMap ? "identity-map" : "map";
+            if(data instanceof SortedMap<?,?> sorted) { kind="sorted-map";values.add(sorted.comparator()); }
+            for(var entry:data.entrySet()) { values.add(entry.getKey());values.add(entry.getValue()); }
+            return new __PREFIX__NodeGraphs.Parts(kind,values);
+        }
+        public int size() { return data.size(); }
+        public boolean containsKey(Object key) { return data.containsKey(key); }
+        public Object get(Object key) { return data.get(key); }
+        private Object prepare(Object value, Copier copier) { Object next = copier.copy(value); cycle(this, next); return next; }
+        private Object putPrepared(Object key, Object next) {
+            Object old = data.get(key); boolean present = data.containsKey(key);
+            if (present && old == next) return old;
+            state.before(); data.put(key, next); if (!present) epoch++; state.context.replace(this, old, next); state.changed(); return old;
+        }
+        public Object put(Object key, Object value) { key(key); return putPrepared(key, prepare(value, new Copier(state.context))); }
+        public void putAll(Map<?,?> values) {
+            ArrayList<Map.Entry<Object,Object>> prepared = new ArrayList<>(); Copier copier = new Copier(state.context);
+            for (Map.Entry<?,?> entry : values.entrySet()) {
+                key(entry.getKey()); prepared.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), prepare(entry.getValue(), copier)));
+            }
+            for (Map.Entry<Object,Object> entry : prepared) putPrepared(entry.getKey(), entry.getValue());
+        }
+        public Object remove(Object key) {
+            if (!data.containsKey(key)) return null;
+            state.before(); Object old = data.remove(key); epoch++; state.context.replace(this, old, null); state.changed(); return old;
+        }
+        public void clear() {
+            if (data.isEmpty()) return;
+            ArrayList<Object> old = new ArrayList<>(data.values()); state.before(); data.clear(); epoch++;
+            for (Object value : old) state.context.replace(this, value, null);
+            state.changed();
+        }
+        public Set<Map.Entry<Object,Object>> entrySet() {
+            return new AbstractSet<>() {
+                public int size() { return data.size(); }
+                public void clear() { MapBox.this.clear(); }
+                public Iterator<Map.Entry<Object,Object>> iterator() {
+                    Iterator<Map.Entry<Object,Object>> iterator = data.entrySet().iterator();
+                    return new Iterator<>() {
+                        Map.Entry<Object,Object> last;
+                        public boolean hasNext() { return iterator.hasNext(); }
+                        public Map.Entry<Object,Object> next() {
+                            last = iterator.next(); Map.Entry<Object,Object> entry = last; int entryEpoch = epoch;
+                            return new Map.Entry<>() {
+                                public Object getKey() { return entry.getKey(); }
+                                public Object getValue() { return entry.getValue(); }
+                                public Object setValue(Object value) {
+                                    if (entryEpoch != epoch) throw new ConcurrentModificationException();
+                                    Object old = entry.getValue(), next = prepare(value, new Copier(state.context));
+                                    if (old == next) return old;
+                                    state.before(); entry.setValue(next); state.context.replace(MapBox.this, old, next); state.changed(); return old;
+                                }
+                                public boolean equals(Object other) {
+                                    return other instanceof Map.Entry<?,?> e && Objects.equals(getKey(),e.getKey()) && Objects.equals(getValue(),e.getValue());
+                                }
+                                public int hashCode() { return Objects.hashCode(getKey()) ^ Objects.hashCode(getValue()); }
+                            };
+                        }
+                        public void remove() {
+                            state.before(); Object old = last == null ? null : last.getValue(); iterator.remove(); epoch++;
+                            state.context.replace(MapBox.this, old, null); state.changed(); last = null;
+                        }
+                    };
+                }
+            };
+        }
+        public Object computeIfAbsent(Object key, Function<? super Object,?> function) {
+            Objects.requireNonNull(function); Object old = get(key); if (old != null) return old;
+            Object next = function.apply(key); if (next == null) return null; put(key,next); return get(key);
+        }
+        public Object computeIfPresent(Object key, BiFunction<? super Object,? super Object,?> function) {
+            Objects.requireNonNull(function); Object old = get(key); if (old == null) return null;
+            Object next = function.apply(key,old); if (next == null) { remove(key); return null; } put(key,next); return get(key);
+        }
+        public Object compute(Object key, BiFunction<? super Object,? super Object,?> function) {
+            Objects.requireNonNull(function); Object next = function.apply(key,get(key));
+            if (next == null) { remove(key); return null; } put(key,next); return get(key);
+        }
+        public Object merge(Object key, Object value, BiFunction<? super Object,? super Object,?> function) {
+            Objects.requireNonNull(function); Objects.requireNonNull(value); Object old = get(key);
+            Object next = old == null ? value : function.apply(old,value);
+            if (next == null) { remove(key); return null; } put(key,next); return get(key);
+        }
+    }
+}

@@ -41,6 +41,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
 
     /** Called when the list changed: an element which counts the modifications of what is below it counts this one. */
     protected void zzModified() {}
+    protected void zzBeforeChange() {}
 
     private void structureChanged() { modCount++; identityIndex = null; zzModified(); }
 
@@ -118,6 +119,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
 
     // -------- core add/remove ----------
     @Override public boolean add(T t) {
+        zzBeforeChange();
         other_setParentToThis(t);
         if (size == elems.length) grow(size + 1);
         elems[size++] = t;
@@ -127,6 +129,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     public void addFront(T t) { add(0, t); }
 
     public List<T> removeAll() {
+        zzBeforeChange();
         ArrayList<T> result = new ArrayList<>(Math.max(size, 4));
         for (int i=0, n=size; i<n; i++) {
             T t = at(i);
@@ -149,7 +152,9 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
      * A failed parent attachment restores the original parents and leaves both lists unchanged.
      */
     public boolean addAllMoved(int index, AsgList<? extends T> source) {
+        zzBeforeChange();
         Objects.requireNonNull(source);
+        source.zzBeforeChange();
         if (index < 0 || index > size) throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
         if (source == this) throw new IllegalArgumentException("Cannot move a list into itself");
         if (!zzOwnsElements() || !source.zzOwnsElements()) throw new IllegalArgumentException("Only owned children can be moved");
@@ -196,6 +201,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     }
 
     @Override public void add(int index, T elem) {
+        zzBeforeChange();
         if (index < 0 || index > size) throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
         other_setParentToThis(elem);
         if (size == elems.length) grow(size + 1);
@@ -210,6 +216,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     }
 
     @Override public boolean addAll(int pos, Collection<? extends T> c) {
+        zzBeforeChange();
         if (pos < 0 || pos > size) throw new IndexOutOfBoundsException("Index: " + pos + ", Size: " + size);
         if (c.isEmpty()) return false;
         Object[] prepared = prepareAll(c);
@@ -223,6 +230,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     }
 
     @Override public void clear() {
+        zzBeforeChange();
         for (int i=0, n=size; i<n; i++) other_clearParent(at(i));
         Arrays.fill(elems, 0, size, null);
         size = 0;
@@ -362,11 +370,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         @Override public void set(T e) {
             if (lastReturned < 0) throw new IllegalStateException();
             checkForComodification();
-            other_clearParent(at(lastReturned));
-            other_setParentToThis(e);
-            elems[lastReturned] = e;
-            identityIndex = null;
-            zzModified();
+            AsgList.this.set(lastReturned,e);
         }
         @Override public void add(T e) {
             checkForComodification();
@@ -385,6 +389,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         return true;
     }
     @Override public T remove(int index) {
+        zzBeforeChange();
         Objects.checkIndex(index, size);
         T t = at(index);
         int tail = size - index - 1;
@@ -397,6 +402,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
 
     /** Removes the elements which the filter accepts, in one pass. A filter which throws leaves the list as it was. */
     private boolean removeMatching(Predicate<? super T> filter) {
+        zzBeforeChange();
         int n = size;
         BitSet gone = null;
         for (int i=0; i<n; i++) {
@@ -434,6 +440,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     }
 
     @Override public T set(int index, T element) {
+        zzBeforeChange();
         Objects.checkIndex(index, size);
         T old = at(index);
         if (old == element) return old;
@@ -450,7 +457,10 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
     }
     @SuppressWarnings("unchecked")
     @Override public void sort(Comparator<? super T> comparator) {
-        Arrays.sort((T[]) elems, 0, size, comparator);
+        zzBeforeChange();
+        T[] sorted=(T[])Arrays.copyOf(elems,size);
+        Arrays.sort(sorted,comparator);
+        System.arraycopy(sorted,0,elems,0,size);
         structureChanged();
     }
 
@@ -477,6 +487,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
         }
         @Override public int size() { check(); return length; }
         @Override public T set(int index, T element) {
+        zzBeforeChange();
             Objects.checkIndex(index, length);
             check();
             return AsgList.this.set(offset + index, element);
@@ -490,6 +501,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
             this.modCount++;
         }
         @Override public T remove(int index) {
+        zzBeforeChange();
             Objects.checkIndex(index, length);
             check();
             T removed = AsgList.this.remove(offset + index);
@@ -532,6 +544,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
 
     /** replace first occurrence by identity (==) */
     public boolean replaceExact(Object oldElem, T newElem) {
+        zzBeforeChange();
         int index = identityIndexOf(oldElem);
         if (index < 0) return false;
         T curr = at(index);
@@ -553,6 +566,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
      * changes when that fails. Returns false when the element is not in the list.
      */
     public boolean replaceExactByAll(Object oldElem, Collection<? extends T> newElems) {
+        zzBeforeChange();
         if (newElems.size() == 1) {
             return replaceExact(oldElem, newElems.iterator().next());
         }
@@ -579,6 +593,7 @@ abstract class AsgList<T> implements List<T>, RandomAccess {
      * may be the element they replace. Nothing changes when that fails. Returns the number of elements replaced.
      */
     public int replaceEach(Map<?, ? extends Collection<? extends T>> replacements) {
+        zzBeforeChange();
         if (replacements.isEmpty() || size == 0) return 0;
         ArrayList<T> result = null;
         ArrayList<T> replaced = new ArrayList<>();

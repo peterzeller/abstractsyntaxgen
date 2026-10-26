@@ -21,6 +21,7 @@ spec returns [Program prog]:
 	('typeprefix:' pre=ID  { $prog.setTypePrefix($pre.text); })?
 	('modification counts:' c1=ID { $prog.addCountedType($c1.text); } (',' c2=ID { $prog.addCountedType($c2.text); })*)?
 
+    ('metadata adapter:' adapter=qID { $prog.setMetadataAdapter($adapter.text); })?
 	'abstract syntax:'
 	element[$prog]*
 	'attributes:'
@@ -47,12 +48,15 @@ paramDef[ConstructorDef c]:
 	{
 		boolean ref = false;
 		boolean ignoreEquality = false;
+        boolean tracked = false;
+        boolean source = false;
 	}
-	('@ignoreForEquality' {ignoreEquality = true;})?
+	('@ignoreForEquality' {ignoreEquality = true;} | '@tracked' {tracked = true;} | '@source' {source = true;})*
 	('ref' {ref = true;})?
 	 t=javaType n=ID 
 	{ 
-		$c.addParam(ref, ignoreEquality, $t.name, $n.text);
+		$c.addParam(ref, ignoreEquality, tracked, $t.name, $n.text);
+        $c.parameters.get($c.parameters.size()-1).setSource(source);
 	}
 	;
 	
@@ -109,10 +113,13 @@ attributeDef[Program prog]:
 		prog.addAttribute(parameters, $elem.text, $attrName.text, $returnType.name, $implementedBy.s, $doc.text, circ);	
 	}
 	|
+    { boolean tracked = false; boolean source = false; }
 	(doc=STRVAL)?
+    ('@tracked' {tracked = true;} | '@source' {source = true;})*
 	t=javaType elem=ID '.' attrName=ID
 	{
-	    prog.addAttributeField($t.name, $elem.text, $attrName.text, $doc.text);
+	    prog.addAttributeField($t.name, $elem.text, $attrName.text, $doc.text, tracked);
+        prog.fieldDefs.get(prog.fieldDefs.size()-1).setSource(source);
 	}
 	;
 	

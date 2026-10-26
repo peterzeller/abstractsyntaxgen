@@ -1,0 +1,33 @@
+package test.ownedmetadata
+
+typeprefix: OM
+modification counts: Root, Raw, Outer, ReferenceOwner, Revisions, Leaf, SourceLists
+
+metadata adapter: test.ownedmetadata.SchemaMetadataAdapter
+abstract syntax:
+SourceLists(Nodes nodes, @source Nodes originNodes)
+WithRefs(Nodes nodes, References references)
+Graph(Nodes nodes, @tracked java.util.Map<Leaf, java.util.List<Leaf>> links, Object variant)
+Nodes * Leaf
+References * ref Leaf
+Recursive(ref Recursive target, int value)
+Pair(Recursive first, Recursive second)
+External(ref Object externalTarget)
+Branch(Tree subtree)
+Tree = Branch | Tip()
+
+Revisions(Leaf body, @source Leaf position, @source @tracked java.util.List<String> lines, @tracked java.util.List<String> facts)
+Root(@tracked java.util.List<String> names,
+     @tracked java.util.Map<String, java.util.List<String>> groups,
+     @tracked java.util.Set<String> tags)
+Raw(@tracked java.util.List<Object> values)
+Leaf(@tracked java.util.List<String> data)
+Outer(Leaf child)
+ReferenceOwner(@tracked java.util.List<Leaf> targets)
+
+attributes:
+@tracked java.util.List<String> Root.history
+
+java.util.List<Leaf> Graph.memo
+
+java.util.Map<Leaf, Leaf> References.bindings

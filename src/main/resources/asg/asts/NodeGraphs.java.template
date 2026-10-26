@@ -1,0 +1,325 @@
+import java.util.function.*;
+
+/** Generated graph operations. Only ownership edges discover nodes; metadata node leaves are references. */
+public final class __PREFIX__NodeGraphs {
+    private __PREFIX__NodeGraphs() { }
+
+    /** Stable, detached external identity. No AST, mutable value, class loader or callback is retained. */
+    public record Symbol(String namespace, String key) {
+        public Symbol { Objects.requireNonNull(namespace); Objects.requireNonNull(key); }
+    }
+    /** Adapter decomposition is consumed immediately and recursively; its contents are never retained in a snapshot. */
+    public record Parts(String tag, List<?> values) {
+        public Parts { Objects.requireNonNull(tag); values=Collections.unmodifiableList(new ArrayList<>(values)); }
+    }
+    public interface Adapter {
+        Adapter DEFAULT=__ADAPTER__;
+        default Parts decompose(Object value) { return null; }
+        default Object compose(String tag,List<Object> values) { throw new IllegalArgumentException("No metadata adapter for " + tag); }
+        default Symbol symbol(String field,Object value) {
+            throw new IllegalArgumentException("No detached metadata adapter for " + field + ": " + value.getClass().getName());
+        }
+        default Object resolve(Symbol symbol) { throw new IllegalArgumentException("Unresolved external symbol: " + symbol); }
+    }
+    interface Container { Parts zzParts(); }
+    private record Shape(String kind,List<Object> values) { }
+    private record Value(String kind,Object atom,List<Integer> links) {
+        Value { links=List.copyOf(links); }
+    }
+    private static boolean scalar(Object value) {
+        return value==null || value instanceof String || value instanceof Boolean || value instanceof Character
+            || value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long
+            || value instanceof Float || value instanceof Double;
+    }
+    @SuppressWarnings({"rawtypes","unchecked"})
+    private static Shape shape(Object value,Adapter adapter) {
+        if(value instanceof Container container) { Parts parts=container.zzParts();return new Shape(parts.tag(),new ArrayList<>(parts.values())); }
+        Parts custom=adapter.decompose(value);
+        if(custom!=null) return new Shape("custom:"+custom.tag(),new ArrayList<>(custom.values()));
+        if(value instanceof SortedMap<?,?> map) {
+            List<Object> values=new ArrayList<>();values.add(map.comparator());
+            for(var entry:map.entrySet()) { stableKey(entry.getKey());values.add(entry.getKey());values.add(entry.getValue()); }
+            return new Shape("sorted-map",values);
+        }
+        if(value instanceof Map<?,?> map) {
+            if(value instanceof EnumMap) throw new IllegalArgumentException("EnumMap needs a metadata adapter preserving its empty key type");
+            List<Object> values=new ArrayList<>();
+            for(var entry:map.entrySet()) { stableKey(entry.getKey());values.add(entry.getKey());values.add(entry.getValue()); }
+            return new Shape(value instanceof IdentityHashMap ? "identity-map" : "map",values);
+        }
+        if(value instanceof List<?> list) return new Shape("list",new ArrayList<>(list));
+        if(value instanceof SortedSet<?> set) {
+            List<Object> values=new ArrayList<>();values.add(set.comparator());
+            for(Object item:set) { stableKey(item);values.add(item); }
+            return new Shape("sorted-set",values);
+        }
+        if(value instanceof Set<?> set) {
+            List<Object> values=new ArrayList<>();for(Object item:set) { stableKey(item);values.add(item); }
+            return new Shape("set",values);
+        }
+        if(value instanceof Optional<?> optional) return new Shape("optional",optional.isPresent() ? List.of(optional.get()) : List.of());
+        return null;
+    }
+    private static void stableKey(Object key) {
+        if(key instanceof Collection<?> || key instanceof Map<?,?> || key!=null && key.getClass().isArray())
+            throw new IllegalArgumentException("Metadata map keys and set members must be stable values or node references");
+    }
+    @SuppressWarnings({"rawtypes","unchecked"})
+    private static Object compose(String kind,List<Object> values,Adapter adapter) {
+        if(kind.startsWith("custom:")) return Objects.requireNonNull(adapter.compose(kind.substring(7),Collections.unmodifiableList(values)),"Metadata adapter returned null");
+        switch(kind) {
+            case "list": return new ArrayList<>(values);
+            case "optional": return values.isEmpty() ? Optional.empty() : Optional.of(values.get(0));
+            case "set", "sorted-set": {
+                Set<Object> result=kind.equals("set") ? new LinkedHashSet<>() : new TreeSet<>((Comparator)values.get(0));
+                for(int i=kind.equals("set") ? 0 : 1;i<values.size();i++)
+                    if(!result.add(values.get(i))) throw new IllegalArgumentException("Reference remapping collided in metadata set");
+                return result;
+            }
+            case "map", "identity-map", "sorted-map": {
+                Map<Object,Object> result=switch(kind) {
+                    case "identity-map" -> new IdentityHashMap<>();
+                    case "sorted-map" -> new TreeMap<>((Comparator)values.get(0));
+                    default -> new LinkedHashMap<>();
+                };
+                for(int i=kind.equals("sorted-map") ? 1 : 0;i<values.size();i+=2) {
+                    Object key=values.get(i);
+                    if(result.containsKey(key)) throw new IllegalArgumentException("Reference remapping collided in metadata map");
+                    result.put(key,values.get(i+1));
+                }
+                return result;
+            }
+            default: throw new IllegalArgumentException("Unknown metadata shape: "+kind);
+        }
+    }
+    private record Owned(List<__PREFIX__Element> nodes,IdentityHashMap<__PREFIX__Element,Integer> ids) { }
+    private static Owned owned(__PREFIX__Element root) {
+        Objects.requireNonNull(root);
+        List<__PREFIX__Element> nodes=new ArrayList<>();nodes.add(root);
+        IdentityHashMap<__PREFIX__Element,Integer> ids=new IdentityHashMap<>();ids.put(root,0);
+        for(int i=0;i<nodes.size();i++) {
+            __PREFIX__Element parent=nodes.get(i);
+            __PREFIX__NodeCodec.encode(parent,new __PREFIX__NodeCodec.Encoder<Integer>() {
+                public Integer child(__PREFIX__Element value) {
+                    if(value==null) throw new IllegalArgumentException("Null owned child");
+                    if(value.getParent()!=parent) throw new IllegalArgumentException("Inconsistent owned-child parent");
+                    if(ids.containsKey(value)) throw new IllegalArgumentException("Duplicate or cyclic owned child");
+                    int id=nodes.size();nodes.add(value);ids.put(value,id);return id;
+                }
+                public Integer reference(__PREFIX__Element value) { return -1; }
+                public Integer attribute(String field,Object value) { return -1; }
+            });
+        }
+        return new Owned(nodes,ids);
+    }
+    /** Validate ownership without following reference targets. May start at an attached subtree. */
+    public static void validate(__PREFIX__Element root) { owned(root); }
+
+    /** Immutable, schema-bound graph. Materialization never exposes partially initialized nodes. */
+    public static final class Snapshot {
+        private final String schema=__PREFIX__NodeCodec.SCHEMA;
+        private final List<__PREFIX__NodeCodec.Data<Integer>> nodes;
+        private final List<Value> values;
+        private Snapshot(List<__PREFIX__NodeCodec.Data<Integer>> nodes,List<Value> values) {
+            this.nodes=List.copyOf(nodes);this.values=List.copyOf(values);
+        }
+        public String schema() { return schema; }
+        /** Equality includes source fields, metadata aliases and all internal reference identities. */
+        @Override public boolean equals(Object other) {
+            return other instanceof Snapshot snapshot && schema.equals(snapshot.schema) && canonical(false).equals(snapshot.canonical(false));
+        }
+        @Override public int hashCode() { return Objects.hash(schema,canonical(false)); }
+        /** Compare snapshots after excluding fields marked @source, without depending on node allocation order. */
+        public boolean sameSemantics(Snapshot other) { return other!=null && schema.equals(other.schema) && canonical(true).equals(other.canonical(true)); }
+        private record Canonical(List<__PREFIX__NodeCodec.Data<Integer>> nodes,List<Value> values) { }
+        private Canonical canonical(boolean semantics) {
+            List<Integer> nodeInputs=new ArrayList<>(),valueInputs=new ArrayList<>();
+            Map<Integer,Integer> nodeIds=new HashMap<>(),valueIds=new HashMap<>();
+            List<__PREFIX__NodeCodec.Data<Integer>> canonicalNodes=new ArrayList<>();List<Value> canonicalValues=new ArrayList<>();
+            IntUnaryOperator nodeId=id -> nodeIds.computeIfAbsent(id,key->{ int next=nodeInputs.size();nodeInputs.add(key);return next; });
+            IntUnaryOperator valueId=id -> valueIds.computeIfAbsent(id,key->{ int next=valueInputs.size();valueInputs.add(key);return next; });
+            nodeId.applyAsInt(0);int n=0,v=0;
+            while(n<nodeInputs.size() || v<valueInputs.size()) {
+                while(n<nodeInputs.size()) {
+                    var node=nodes.get(nodeInputs.get(n++));List<Integer> fields=new ArrayList<>(),items=new ArrayList<>();
+                    Set<Integer> source=semantics ? __PREFIX__NodeCodec.sourceFields(node.kind()) : Set.of();
+                    for(int i=0;i<node.fields().size();i++) if(!source.contains(i)) fields.add(valueId.applyAsInt(node.fields().get(i)));
+                    for(int item:node.items()) items.add(valueId.applyAsInt(item));
+                    canonicalNodes.add(new __PREFIX__NodeCodec.Data<>(node.kind(),fields,items));
+                }
+                while(v<valueInputs.size()) {
+                    Value value=values.get(valueInputs.get(v++));List<Integer> links=new ArrayList<>();
+                    for(int link:value.links()) links.add(valueId.applyAsInt(link));
+                    Object atom=value.kind().equals("node") ? nodeId.applyAsInt((Integer)value.atom()) : value.atom();
+                    canonicalValues.add(new Value(value.kind(),atom,links));
+                }
+            }
+            return new Canonical(List.copyOf(canonicalNodes),List.copyOf(canonicalValues));
+        }
+
+        public List<__PREFIX__NodeCodec.Data<Integer>> nodes() { return nodes; }
+        public __PREFIX__Element materialize(Adapter adapter) {
+            Objects.requireNonNull(adapter);
+            if(!schema.equals(__PREFIX__NodeCodec.SCHEMA)) throw new IllegalArgumentException("Snapshot schema mismatch");
+            List<__PREFIX__Element> allocated=new ArrayList<>(nodes.size());
+            for(var node:nodes) allocated.add(__PREFIX__NodeCodec.allocate(node.kind()));
+            Object[] decoded=new Object[values.size()];Map<Symbol,Object> symbols=new HashMap<>();
+            for(int index:order(values)) {
+                Value value=values.get(index);Object result;
+                switch(value.kind()) {
+                    case "atom": result=value.atom();break;
+                    case "node": result=allocated.get((Integer)value.atom());break;
+                    case "symbol": result=symbols.computeIfAbsent((Symbol)value.atom(),key->Objects.requireNonNull(adapter.resolve(key),"Unresolved external symbol"));break;
+                    default:
+                        List<Object> children=new ArrayList<>();for(int link:value.links()) children.add(decoded[link]);
+                        result=compose(value.kind(),children,adapter);
+                }
+                decoded[index]=result;
+            }
+            var decoder=new __PREFIX__NodeCodec.Decoder<Integer>() {
+                public __PREFIX__Element child(Integer id) { return (__PREFIX__Element)decoded[id]; }
+                public __PREFIX__Element reference(Integer id) { return (__PREFIX__Element)decoded[id]; }
+                public Object restoreAttribute(String field,Integer id) { return decoded[id]; }
+            };
+            for(int i=nodes.size()-1;i>=0;i--) __PREFIX__NodeCodec.populate(allocated.get(i),nodes.get(i),decoder);
+            validate(allocated.get(0));
+            for(var node:allocated) node.zzResetRevisions();
+            return allocated.get(0);
+        }
+        public __PREFIX__Element materialize() { return materialize(Adapter.DEFAULT); }
+    }
+    public static Snapshot freeze(__PREFIX__Element root) { return freeze(root,Adapter.DEFAULT); }
+    public static Snapshot freeze(__PREFIX__Element root,Adapter adapter) {
+        Objects.requireNonNull(adapter);Owned owned=owned(root);
+        List<Value> values=new ArrayList<>();List<Object> pending=new ArrayList<>();List<String> fields=new ArrayList<>();
+        IdentityHashMap<Object,Integer> ids=new IdentityHashMap<>();Map<Object,Integer> atoms=new HashMap<>();
+        class Encoder implements __PREFIX__NodeCodec.Encoder<Integer> {
+            int value(String field,Object object) {
+                Map<Object,Integer> memo=scalar(object) ? atoms : ids;
+                Integer old=memo.get(object);if(old!=null) return old;
+                int id=values.size();values.add(null);pending.add(object);fields.add(field);memo.put(object,id);return id;
+            }
+            public Integer child(__PREFIX__Element node) { return value("owned child",node); }
+            public Integer reference(__PREFIX__Element node) { return value("node reference",node); }
+            public Integer reference(String field,__PREFIX__Element node) { return value(field,node); }
+            public Integer attribute(String field,Object object) { return value(field,object); }
+            public Integer externalReference(String field,Object object) { return object==null ? value(field,null) : value(field,new External(object)); }
+        }
+        Encoder encoder=new Encoder();List<__PREFIX__NodeCodec.Data<Integer>> nodes=new ArrayList<>();
+        for(var node:owned.nodes()) nodes.add(__PREFIX__NodeCodec.encode(node,encoder));
+        for(int i=0;i<pending.size();i++) {
+            Object object=pending.get(i);String field=fields.get(i);Value result;
+            if(object instanceof External external) result=new Value("symbol",Objects.requireNonNull(adapter.symbol(field,external.value())),List.of());
+            else if(scalar(object)) result=new Value("atom",object,List.of());
+            else if(object instanceof __PREFIX__Element node && owned.ids().containsKey(node)) result=new Value("node",owned.ids().get(node),List.of());
+            else {
+                Shape shape=object instanceof __PREFIX__Element ? null : shape(object,adapter);
+                if(shape==null) result=new Value("symbol",Objects.requireNonNull(adapter.symbol(field,object)),List.of());
+                else {
+                    List<Integer> links=new ArrayList<>();for(Object value:shape.values()) links.add(encoder.value(field,value));
+                    result=new Value(shape.kind(),null,links);
+                }
+            }
+            values.set(i,result);
+        }
+        order(values); // Reject container cycles now, rather than retaining a snapshot which cannot materialize.
+        return new Snapshot(nodes,values);
+    }
+    private record External(Object value) { }
+    private record Position(int index,int next) { }
+    /** Postorder over the flat metadata table. Node references are leaves, including self/back references. */
+    private static List<Integer> order(List<Value> values) {
+        byte[] state=new byte[values.size()];List<Integer> result=new ArrayList<>(values.size());
+        ArrayDeque<Position> pending=new ArrayDeque<>();
+        for(int start=0;start<values.size();start++) {
+            if(state[start]==2) continue;pending.push(new Position(start,0));
+            while(!pending.isEmpty()) {
+                Position position=pending.pop();int index=position.index();state[index]=1;
+                List<Integer> links=values.get(index).links();
+                if(position.next()==links.size()) { state[index]=2;result.add(index);continue; }
+                pending.push(new Position(index,position.next()+1));int child=links.get(position.next());
+                if(state[child]==1) throw new IllegalArgumentException("Cyclic metadata containers need symbolic node references");
+                if(state[child]==0) pending.push(new Position(child,0));
+            }
+        }
+        return result;
+    }
+
+    /** Visit every direct and nested reference slot, including external schema references, without visiting target bodies. */
+    public static void referenceSlots(__PREFIX__Element root,BiConsumer<String,Object> visitor,Adapter adapter) {
+        Objects.requireNonNull(visitor);Objects.requireNonNull(adapter);
+        for(var node:owned(root).nodes()) __PREFIX__NodeCodec.encode(node,new __PREFIX__NodeCodec.Encoder<Integer>() {
+            public Integer child(__PREFIX__Element value) { return 0; }
+            public Integer reference(__PREFIX__Element value) { return reference("node reference",value); }
+            public Integer reference(String field,__PREFIX__Element value) { if(value!=null) visitor.accept(field,value);return 0; }
+            public Integer externalReference(String field,Object value) { if(value!=null) visitor.accept(field,value);return 0; }
+            public Integer attribute(String field,Object value) {
+                Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());ArrayDeque<Object> pending=new ArrayDeque<>();
+                if(value!=null) pending.push(value);
+                while(!pending.isEmpty()) {
+                    Object next=pending.pop();if(!seen.add(next)) continue;
+                    if(next instanceof __PREFIX__Element target) visitor.accept(field,target);
+                    else if(!scalar(next)) { Shape shape=shape(next,adapter);if(shape!=null) for(Object part:shape.values()) if(part!=null) pending.push(part); }
+                }
+                return 0;
+            }
+        });
+    }
+    public static void references(__PREFIX__Element root,Consumer<__PREFIX__Element> visitor,Adapter adapter) {
+        Objects.requireNonNull(visitor);referenceSlots(root,(field,value)->{ if(value instanceof __PREFIX__Element node) visitor.accept(node); },adapter);
+    }
+    public static void references(__PREFIX__Element root,Consumer<__PREFIX__Element> visitor) { references(root,visitor,Adapter.DEFAULT); }
+
+    /** Per-copy metadata context: preserves container aliases and maps reference leaves without touching originals. */
+    public static final class MetadataMapper {
+        private final UnaryOperator<__PREFIX__Element> references;
+        private final Adapter adapter;
+        private final IdentityHashMap<Object,Object> copies=new IdentityHashMap<>();
+        public MetadataMapper(UnaryOperator<__PREFIX__Element> references,Adapter adapter) {
+            this.references=Objects.requireNonNull(references);this.adapter=Objects.requireNonNull(adapter);
+        }
+        private record Frame(Object input,Shape shape,boolean finish) { }
+        public Object map(Object input) {
+            if(input==null) return null;
+            Set<Object> visiting=Collections.newSetFromMap(new IdentityHashMap<>());ArrayDeque<Frame> pending=new ArrayDeque<>();
+            pending.push(new Frame(input,null,false));
+            while(!pending.isEmpty()) {
+                Frame frame=pending.pop();Object value=frame.input();if(value==null || copies.containsKey(value)) continue;
+                if(frame.finish()) {
+                    List<Object> children=new ArrayList<>();for(Object part:frame.shape().values()) children.add(part==null ? null : copies.get(part));
+                    copies.put(value,compose(frame.shape().kind(),children,adapter));visiting.remove(value);continue;
+                }
+                if(value instanceof __PREFIX__Element node) { copies.put(value,references.apply(node));continue; }
+                if(scalar(value)) { copies.put(value,value);continue; }
+                if(!visiting.add(value)) throw new IllegalArgumentException("Cyclic metadata containers need symbolic node references");
+                Shape shape=shape(value,adapter);
+                if(shape==null) { copies.put(value,value);visiting.remove(value);continue; }
+                pending.push(new Frame(value,shape,true));
+                List<Object> children=shape.values();for(int i=children.size()-1;i>=0;i--) if(children.get(i)!=null) pending.push(new Frame(children.get(i),null,false));
+            }
+            return copies.get(input);
+        }
+    }
+    /** Private mutable copy of all owned nodes and standard metadata containers; custom values use a type adapter. */
+    public static __PREFIX__Element copy(__PREFIX__Element root,Adapter adapter) {
+        Owned owned=owned(root);List<__PREFIX__Element> copies=new ArrayList<>(owned.nodes().size());
+        List<__PREFIX__NodeCodec.Data<Object>> data=new ArrayList<>();
+        for(var node:owned.nodes()) {
+            var encoded=__PREFIX__NodeCodec.encode(node,new __PREFIX__NodeCodec.Encoder<Object>() {
+                public Object child(__PREFIX__Element value) { return value; }
+                public Object reference(__PREFIX__Element value) { return value==null ? Null.VALUE : value; }
+                public Object attribute(String field,Object value) { return value==null ? Null.VALUE : value; }
+            });
+            data.add(encoded);copies.add(__PREFIX__NodeCodec.allocate(encoded.kind()));
+        }
+        MetadataMapper metadata=new MetadataMapper(node -> { Integer id=owned.ids().get(node);return id==null ? node : copies.get(id); },adapter);
+        var decoder=new __PREFIX__NodeCodec.Decoder<Object>() {
+            public __PREFIX__Element child(Object value) { return copies.get(owned.ids().get(value)); }
+            public __PREFIX__Element reference(Object value) { return value==Null.VALUE ? null : (__PREFIX__Element)metadata.map(value); }
+            public Object restoreAttribute(String field,Object value) { return value==Null.VALUE ? null : metadata.map(value); }
+        };
+        for(int i=copies.size()-1;i>=0;i--) __PREFIX__NodeCodec.populate(copies.get(i),data.get(i),decoder);
+        validate(copies.get(0));for(var node:copies) node.zzResetRevisions();return copies.get(0);
+    }
+    private enum Null { VALUE }
+}

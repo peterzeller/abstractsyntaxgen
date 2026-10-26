@@ -52,6 +52,10 @@ public class Generator {
         return !prog.countedTypes.isEmpty();
     }
 
+    private boolean sourceRevisions() {
+        return prog.constructorDefs.stream().anyMatch(c -> c.parameters.stream().anyMatch(Parameter::isSource)) || prog.fieldDefs.stream().anyMatch(FieldDef::isSource);
+    }
+
     private boolean isCounted(ConstructorDef c) {
         return prog.countedTypes.contains(c.getName());
     }
@@ -85,8 +89,9 @@ public class Generator {
     }
 
     /** The line which counts a change of this element, which every setter ends with; none if nothing counts. */
-    private String modifiedStatement() {
-        return countsModifications() ? "        " + getTreeUtilType() + ".modified(this);\n" : "";
+    private String modifiedStatement() { return modifiedStatement(false); }
+    private String modifiedStatement(boolean source) {
+        return countsModifications() ? "        " + getTreeUtilType() + ".modified(this" + (source ? ", 2" : "") + ");\n" : "";
     }
 
 
@@ -244,6 +249,15 @@ public class Generator {
     }
 
     public void generate() {
+        for (ConstructorDef constructor : prog.constructorDefs) for (Parameter parameter : constructor.parameters) {
+            TypeUse type=TypeUse.parse(parameter.getTyp());
+            if(parameter.isTracked()) type.validateTracked(constructor.getName()+"."+parameter.name,parameter.isRef);
+        }
+        for(FieldDef field:prog.fieldDefs) {
+            TypeUse type=TypeUse.parse(field.getFieldType());
+            if(field.isTracked()) type.validateTracked(field.getTyp()+"."+field.getFieldName(),false);
+        }
+        if(sourceRevisions() && !countsModifications()) throw new IllegalArgumentException("@source requires modification counts in the schema");
         createFakeSuperclass();
 
         calculateProperties();
@@ -264,6 +278,9 @@ public class Generator {
 
 
         generateFactoryClass();
+        generateTrackedMetadata();
+        generateRuntime("NodeGraphs");
+        generateRuntime("NodeOwnership");
         StringBuilder codec = new StringBuilder();
         printProlog(codec);
         new NodeCodecGenerator(prog, this::printType, this::hasField).write(codec);
@@ -379,7 +396,13 @@ public class Generator {
         }
         sb.append("    /** Counted by the changes of this element and of everything below it, see ").append(getTreeUtilType()).append(".modified. */\n");
         sb.append("    int zzModificationCount;\n");
+        if (sourceRevisions()) {
+            sb.append("    int zzSemanticCount, zzSourceCount;\n");
+            sb.append("    @Override public int semanticModificationCount() { return zzSemanticCount; }\n");
+            sb.append("    @Override public int sourceModificationCount() { return zzSourceCount; }\n");
+        }
         sb.append("    @Override public int modificationCount() { return zzModificationCount; }\n\n");
+        sb.append("    @Override public void zzResetRevisions() { "+typePrefix+"NodeOwnership.before(this);zzModificationCount=0; "+(sourceRevisions() ? "zzSemanticCount=zzSourceCount=0;" : "")+" }\n");
     }
 
     private void createStructuralEquals(ConstructorDef c, StringBuilder sb) {
@@ -410,22 +433,32 @@ public class Generator {
         sb.append("    }\n");
     }
 
-    private void createReferenceRepairMethods(ConstructorDef c, StringBuilder sb) {
-        List<Parameter> refs = new ArrayList<>();
-        for (Parameter p : c.parameters) {
-            if (p.isRef && prog.hasElement(p.getTyp())) refs.add(p);
-        }
-        if (refs.isEmpty()) return;
-        String elementType = getCommonSupertypeType();
+    private void createReferenceRepairMethods(AstBaseTypeDefinition c, StringBuilder sb) {
+        List<Parameter> params=c instanceof ConstructorDef constructor ? constructor.parameters : List.of();
+        boolean referenceItems=c instanceof ListDef list && list.ref;
+        List<Parameter> refs=params.stream().filter(p->p.isRef && prog.hasElement(p.getTyp())).toList();
+        List<Parameter> metadata=params.stream().filter(p->!prog.hasElement(p.getTyp()) && !JavaTypes.primitiveTypes.contains(p.getTyp()) && !p.getTyp().equals("String")).toList();
+        List<FieldDef> fields=prog.fieldDefs.stream().filter(f->hasField(c,f) && !JavaTypes.primitiveTypes.contains(f.getFieldType()) && !f.getFieldType().equals("String")).toList();
+        if(!referenceItems && refs.isEmpty() && metadata.isEmpty() && fields.isEmpty()) return;
+        String elementType=getCommonSupertypeType();
         sb.append("    @Override public boolean zzHasReferences() { return true; }\n");
-        sb.append("    @Override public void zzRepairReferences(java.util.IdentityHashMap<")
-                .append(elementType).append(", ").append(elementType).append("> copies) {\n");
-        for (Parameter p : refs) {
-            sb.append("        ").append(elementType).append(" mapped_").append(p.name)
-                    .append(" = copies.get(this.").append(p.name).append(");\n");
-            sb.append("        if (mapped_").append(p.name).append(" != null) this.").append(p.name)
-                    .append(" = (").append(printType(p.getTyp())).append(") mapped_").append(p.name).append(";\n");
+        sb.append("    @Override public void zzRepairReferences(java.util.IdentityHashMap<"+elementType+", "+elementType+"> copies) {\n");
+        sb.append("        "+typePrefix+"NodeOwnership.before(this);\n");
+        sb.append("        var mapper=new "+typePrefix+"NodeGraphs.MetadataMapper(node -> copies.getOrDefault(node,node), "+typePrefix+"NodeGraphs.Adapter.DEFAULT);\n");
+        if(referenceItems) sb.append("        for(int i=0;i<size();i++) { var mapped=copies.get(get(i));if(mapped!=null) set(i,("+printType(((ListDef)c).itemType)+")mapped); }\n");
+        if(trackedMetadata(c)) sb.append("        zzmetadataOwner.begin();\n        try {\n");
+        for(Parameter p:refs) sb.append("        this."+p.name+" = ("+printType(p.getTyp())+")mapper.map(this."+p.name+");\n");
+        for(Parameter p:metadata) {
+            String value="("+printType(p.getTyp())+")mapper.map(this."+p.name+")";
+            if(p.isTracked()) sb.append("        zzAssign"+toFirstUpper(p.name)+"("+value+");\n");
+            else sb.append("        this."+p.name+" = "+value+";\n");
         }
+        for(FieldDef f:fields) {
+            String value="("+printType(f.getFieldType())+")mapper.map(this."+f.getFieldName()+")";
+            if(f.isTracked()) sb.append("        zzAssign"+toFirstUpper(f.getFieldName())+"("+value+");\n");
+            else sb.append("        this."+f.getFieldName()+" = "+value+";\n");
+        }
+        if(trackedMetadata(c)) sb.append("        } finally { zzmetadataOwner.end(); }\n");
         sb.append("    }\n\n");
     }
 
@@ -439,7 +472,9 @@ public class Generator {
             if (p.isIgnoreEquality() || (prog.hasElement(p.getTyp()) && !p.isRef)) continue;
             String leftExpr = leftPrefix + "get" + toFirstUpper(p.name) + "()";
             String rightExpr = rightPrefix + "get" + toFirstUpper(p.name) + "()";
-            if (p.isRef && prog.hasElement(p.getTyp())) {
+            if (p.isTracked()) {
+                comparisons.add(typePrefix + "TrackedMetadata.equal(" + leftExpr + ", " + rightExpr + ")");
+            } else if (p.isRef && prog.hasElement(p.getTyp())) {
                 comparisons.add(leftExpr + " == " + rightExpr);
             } else {
                 comparisons.add(equalityExpression(leftExpr, rightExpr, p.getTyp()));
@@ -448,21 +483,67 @@ public class Generator {
         return comparisons;
     }
 
+    private void generateRuntime(String name) {
+        StringBuilder out=new StringBuilder();printProlog(out);
+        try(var source=Generator.class.getResourceAsStream("/asg/asts/"+name+".java.template")) {
+            if(source==null) throw new IllegalStateException("Missing generated runtime: "+name);
+            out.append(new String(source.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).replace("__PREFIX__",typePrefix).replace("__ADAPTER__",prog.getMetadataAdapter()==null ? "new Adapter() { }" : "new "+prog.getMetadataAdapter()+"()"));
+        } catch(java.io.IOException failure) { throw new IllegalStateException("Cannot read generated runtime: "+name,failure); }
+        fileGenerator.createFile(typePrefix+name+".java",out);
+    }
+
+    private void generateTrackedMetadata() {
+        boolean needed = prog.constructorDefs.stream().anyMatch(c -> c.parameters.stream().anyMatch(Parameter::isTracked))
+            || prog.fieldDefs.stream().anyMatch(FieldDef::isTracked);
+        if (!needed) return;
+        StringBuilder out = new StringBuilder();
+        printProlog(out);
+        try (var source = Generator.class.getResourceAsStream("/asg/asts/TrackedMetadata.java.template")) {
+            if (source == null) throw new IllegalStateException("Missing tracked metadata runtime template");
+            out.append(new String(source.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replace("__PREFIX__", typePrefix));
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Cannot read tracked metadata runtime template", failure);
+        }
+        fileGenerator.createFile(typePrefix + "TrackedMetadata.java", out);
+    }
+
+    private void createTrackedAssignment(String name, String typ, boolean source, StringBuilder out) {
+        out.append("    private ").append(typePrefix).append("TrackedMetadata.Handle<").append(typ).append("> zzmetadata_").append(name).append(";\n");
+        out.append("    private void zzAssign").append(toFirstUpper(name)).append('(').append(typ).append(" value) {\n");
+        out.append("        var next = new ").append(typePrefix).append("TrackedMetadata.Handle<").append(typ).append(">(zzmetadataOwner, value, ").append(source ? 2 : 1).append(");\n");
+        out.append("        if (zzmetadata_").append(name).append(" != null) zzmetadata_").append(name).append(".detach();\n");
+        out.append("        zzmetadata_").append(name).append(" = next;\n");
+        out.append("        this.").append(name).append(" = next.value();\n    }\n");
+    }
+
+    private boolean trackedMetadata(AstBaseTypeDefinition definition) {
+        return definition instanceof ConstructorDef constructor && constructor.parameters.stream().anyMatch(Parameter::isTracked)
+            || prog.fieldDefs.stream().anyMatch(field -> field.isTracked() && hasField(definition, field));
+    }
+
     private void createFieldsImpl(AstBaseTypeDefinition c, StringBuilder sb) {
+        if (trackedMetadata(c)) {
+            sb.append("    @Override public void zzBeginMetadata() { "+typePrefix+"NodeOwnership.before(this);zzmetadataOwner.begin(); }\n    @Override public void zzEndMetadata() { zzmetadataOwner.end(); }\n");
+            sb.append("    private final ").append(typePrefix).append("TrackedMetadata.Owner zzmetadataOwner = new ")
+                .append(typePrefix).append("TrackedMetadata.Owner(() -> "+typePrefix+"NodeOwnership.before(this), mask -> { ").append(countsModifications() ? getTreeUtilType() + ".modified(this, mask);" : "").append(" });\n");
+        }
         for (FieldDef field : prog.fieldDefs) {
             if (!hasField(c, field)) {
                 continue;
             }
-            sb.append("    private " + field.getFieldType() + " " + field.getFieldName() + ";\n");
+            sb.append("    private " + printType(field.getFieldType()) + " " + field.getFieldName() + ";\n");
+            if (field.isTracked()) createTrackedAssignment(field.getFieldName(), printType(field.getFieldType()), field.isSource(), sb);
             sb.append("    /** " + field.getDoc() + "*/\n");
-            sb.append("    public " + field.getFieldType() + " get" + toFirstUpper(field.getFieldName()) + "() {\n");
+            sb.append("    public " + printType(field.getFieldType()) + " get" + toFirstUpper(field.getFieldName()) + "() {\n");
             sb.append("        return " + field.getFieldName() + ";\n");
             sb.append("    }\n");
             sb.append("    /** " + field.getDoc() + "*/\n");
             sb.append("    public void set" + toFirstUpper(field.getFieldName())
-                    + "(" + field.getFieldType() + " " + field.getFieldName() + ") {\n");
-            sb.append("        this." + field.getFieldName() + " = " + field.getFieldName() + ";\n");
-            sb.append(modifiedStatement());
+                    + "(" + printType(field.getFieldType()) + " " + field.getFieldName() + ") {\n");
+            sb.append("        "+typePrefix+"NodeOwnership.before(this);\n");
+            if (field.isTracked()) sb.append("        zzAssign").append(toFirstUpper(field.getFieldName())).append("(").append(field.getFieldName()).append(");\n");
+            else sb.append("        this." + field.getFieldName() + " = " + field.getFieldName() + ";\n");
+            sb.append(modifiedStatement(field.isSource()));
             sb.append("    }\n");
         }
     }
@@ -644,8 +725,16 @@ public class Generator {
                 sb.append("            throw new IllegalArgumentException(\"Element " + p.name + " must not be null.\");\n");
             }
         }
+        List<Parameter> owned=c.parameters.stream().filter(p->!p.isRef && prog.hasElement(p.getTyp())).toList();
+        for(int i=0;i<owned.size();i++) {
+            Parameter parameter=owned.get(i);
+            sb.append("        "+typePrefix+"NodeOwnership.attach(this, "+parameter.name+");\n");
+            for(int j=0;j<i;j++) sb.append("        if((Object)"+parameter.name+" == "+owned.get(j).name+") throw new IllegalArgumentException(\"Duplicate owned child\");\n");
+        }
+        if (trackedMetadata(c)) sb.append("        zzmetadataOwner.begin();\n        try {\n");
         for (Parameter p : c.parameters) {
-            sb.append("        this." + p.name + " = " + p.name + ";\n");
+            if (p.isTracked()) sb.append("        zzAssign").append(toFirstUpper(p.name)).append("(").append(p.name).append(");\n");
+            else sb.append("        this." + p.name + " = " + p.name + ";\n");
         }
         for (Parameter p : c.parameters) {
             if (!JavaTypes.primitiveTypes.contains(p.getTyp())) {
@@ -656,6 +745,7 @@ public class Generator {
                 }
             }
         }
+        if (trackedMetadata(c)) sb.append("        } finally { zzmetadataOwner.end(); }\n");
         sb.append("    }\n\n");
     }
 
@@ -663,26 +753,27 @@ public class Generator {
         String implType = c.getName(typePrefix) + "Impl";
         sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
+        if (trackedMetadata(c)) sb.append("        result.zzmetadataOwner.begin();\n        try {\n");
         for (Parameter p : c.parameters) {
             if (p.isRef || !prog.hasElement(p.getTyp())) {
-                sb.append("        result.").append(p.name).append(" = this.").append(p.name).append(";\n");
+                if (p.isTracked()) sb.append("        result.zzAssign").append(toFirstUpper(p.name)).append("(this.").append(p.name).append(");\n");
+                else sb.append("        result.").append(p.name).append(" = this.").append(p.name).append(";\n");
             }
         }
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(c, field)) {
                 // not through the setter, which counts a modification: a copy has had none
-                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
+                if (field.isTracked()) sb.append("        result.zzAssign").append(toFirstUpper(field.getFieldName())).append("(this.").append(field.getFieldName()).append(");\n");
+                else sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
+        if (trackedMetadata(c)) sb.append("        } finally { result.zzmetadataOwner.end(); }\n");
         sb.append("        return result;\n");
         sb.append("    }\n\n");
     }
 
     private String printType(String typ) {
-        if (prog.hasElement(typ)) {
-            return prog.getElement(typ).getName(typePrefix);
-        }
-        return typ;
+        return TypeUse.parse(typ).render(name -> prog.hasElement(name) ? prog.getElement(name).getName(typePrefix) : name);
     }
 
     private String equalityExpression(String left, String right, String type) {
@@ -715,9 +806,12 @@ public class Generator {
     }
 
     private void createGetSetParentMethods(StringBuilder sb) {
+        sb.append("    { "+typePrefix+"NodeOwnership.created(this); }\n");
         sb.append("    private " + getCommonSupertypeType() + " parent;\n");
         sb.append("    public " + getNullableAnnotation() + getCommonSupertypeType() + " getParent() { return parent; }\n");
         sb.append("    public void setParent(" + getNullableAnnotation() + getCommonSupertypeType() + " parent) {\n" +
+                "        "+typePrefix+"NodeOwnership.before(this);\n" +
+                "        if (parent != null) "+typePrefix+"NodeOwnership.attach(parent, this);\n" +
                 "        if (parent != null && this.parent != null) {\n" +
                 "            throw new Error(\"Cannot change parent of element \" + this.getClass().getSimpleName() + \", as it is already used in another tree. \"\n" +
                 "                + \"Use the copy method to create a new tree or remove the tree from its old parent or set the parent to null before moving the tree. \");\n" +
@@ -772,23 +866,33 @@ public class Generator {
 
 
     private void createGetterAndSetterMethods(ConstructorDef c, StringBuilder sb) {
+        if (sourceRevisions()) {
+            sb.append("    @Override public boolean zzSourceChild(").append(getCommonSupertypeType()).append(" child) { return false");
+            for (Parameter p : c.parameters) if (p.isSource() && !p.isRef && prog.hasElement(p.getTyp())) sb.append(" || child == this.").append(p.name);
+            sb.append("; }\n");
+        }
         for (Parameter p : c.parameters) {
             sb.append("    private " + printType(p.getTyp()) + " " + p.name + ";\n");
+            if (p.isTracked()) createTrackedAssignment(p.name, printType(p.getTyp()), p.isSource(), sb);
             // setter:
             sb.append("    public void set" + toFirstUpper(p.name) + "(" + printType(p.getTyp()) + " " + p.name + ") {\n");
+            sb.append("        "+typePrefix+"NodeOwnership.before(this);\n");
             if (!JavaTypes.primitiveTypes.contains(p.getTyp()) && !p.isRef) {
                 // add null checks for non primitive types:
                 sb.append("        if (" + p.name + " == null) throw new IllegalArgumentException();\n");
                 if (isGeneratedTyp(p.getTyp()) && !p.isRef) {
                     // we have a generated type.
                     // the removed type looses its parent:
+                    sb.append("        if (this."+p.name+" == "+p.name+") return;\n");
+                    sb.append("        "+typePrefix+"NodeOwnership.attach(this, "+p.name+");\n");
                     sb.append("        if (this." + p.name + " != null) this." + p.name + ".setParent(null);\n");
                     // the new element has a new parent:
                     sb.append("        " + p.name + ".setParent(this);\n");
                 }
             }
-            sb.append("        this." + p.name + " = " + p.name + ";\n");
-            sb.append(modifiedStatement());
+            if (p.isTracked()) sb.append("        zzAssign").append(toFirstUpper(p.name)).append("(").append(p.name).append(");\n");
+            else sb.append("        this." + p.name + " = " + p.name + ";\n");
+            sb.append(modifiedStatement(p.isSource()));
             sb.append("    } \n");
             // getter
             sb.append("    public " + printType(p.getTyp()) + " get" + toFirstUpper(p.name) + "() { return " + p.name + "; }\n\n");
@@ -971,6 +1075,8 @@ public class Generator {
             sb.append("     * know whether the element is the same. It wraps around after 2^32 modifications.\n");
             sb.append("     */\n");
             sb.append("    int modificationCount();\n");
+            sb.append("    default int semanticModificationCount() { return modificationCount(); }\n");
+            sb.append("    default int sourceModificationCount() { return 0; }\n");
         }
 
         createAttributeStubs(c, sb);
@@ -1241,10 +1347,10 @@ public class Generator {
         for (FieldDef attr : prog.fieldDefs) {
             if (hasField(c, attr)) {
                 sb.append("    /** " + attr.getDoc() + "*/\n");
-                sb.append("    public abstract " + attr.getFieldType() + " get" + toFirstUpper(attr.getFieldName()) + "();\n");
+                sb.append("    public abstract " + printType(attr.getFieldType()) + " get" + toFirstUpper(attr.getFieldName()) + "();\n");
                 sb.append("    /** " + attr.getDoc() + "*/\n");
                 sb.append("    public abstract void set" + toFirstUpper(attr.getFieldName())
-                        + "(" + attr.getFieldType() + " " + attr.getFieldName() + ");\n");
+                        + "(" + printType(attr.getFieldType()) + " " + attr.getFieldName() + ");\n");
             }
         }
     }
@@ -1283,6 +1389,9 @@ public class Generator {
                 .append(l.getName(typePrefix)).append(" {\n ");
 
         createShallowCopyMethod(l, sb);
+        if(l.ref) sb.append("    @Override public boolean zzReferenceItems() { return true; }\n");
+        createReferenceRepairMethods(l,sb);
+
 
         createGetSetParentMethods(sb);
 
@@ -1291,17 +1400,20 @@ public class Generator {
         if (countsModifications()) {
             // a change of the list is a change of the element it is a part of
             sb.append("    @Override protected void zzModified() {\n");
-            sb.append("        if (parent != null) ").append(getTreeUtilType()).append(".modified(parent);\n");
+            sb.append("        ").append(getTreeUtilType()).append(".modified(this);\n");
             sb.append("    }\n\n");
         }
 
+        sb.append("    @Override protected void zzBeforeChange() { "+typePrefix+"NodeOwnership.before(this); }\n");
         sb.append("    protected void other_setParentToThis(" + printType(l.itemType) + " t) {\n");
+        sb.append("        "+typePrefix+"NodeOwnership.before(this);\n");
         if (isGeneratedTyp(l.itemType) && !l.ref) {
             sb.append("        t.setParent(this);\n");
         }
         sb.append("    }\n\n");
 
         sb.append("    protected void other_clearParent(" + printType(l.itemType) + " t) {\n");
+        sb.append("        "+typePrefix+"NodeOwnership.before(this);\n");
         if (isGeneratedTyp(l.itemType) && !l.ref) {
             sb.append("        t.setParent(null);\n");
         }
@@ -1318,7 +1430,12 @@ public class Generator {
         String listImplType = listType + "Impl";
         String treeUtil = getTreeUtilType();
         sb.append("    @Override public java.lang.Boolean zzLocalEquals(").append(getCommonSupertypeType()).append(" e) {\n");
+        if(l.ref) {
+            sb.append("        if(!(e instanceof "+listType+" other) || size()!=other.size()) return false;\n");
+            sb.append("        for(int i=0;i<size();i++) if(get(i)!=other.get(i)) return false;\n        return true;\n");
+        } else {
         sb.append("        return e instanceof ").append(listType).append(";\n");
+        }
         sb.append("    }\n\n");
         sb.append("    @Override public boolean structuralEquals(").append(getCommonSupertypeType()).append(" e) {\n");
         sb.append("        return zzStructuralEquals(e, 0);\n");
@@ -1330,7 +1447,8 @@ public class Generator {
         sb.append("        if (other.size() != n) return false;\n");
         sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return ").append(treeUtil).append(".structuralEquals(this, e);\n");
         sb.append("        for (int i = 0; i < n; i++) {\n");
-        sb.append("            if (!get(i).zzStructuralEquals(other.get(i), depth + 1)) return false;\n");
+        if(l.ref) sb.append("            if (get(i) != other.get(i)) return false;\n");
+        else sb.append("            if (!get(i).zzStructuralEquals(other.get(i), depth + 1)) return false;\n");
         sb.append("        }\n");
         sb.append("        return true;\n");
         sb.append("    }\n\n");
@@ -1340,10 +1458,12 @@ public class Generator {
         sb.append("        if (depth >= ").append(treeUtil).append(".MAX_DEPTH) return (").append(listImplType).append(") ")
                 .append(treeUtil).append(".copy(this, false);\n");
         sb.append("        ").append(listImplType).append(" result = zzShallowCopy();\n");
+        if(!l.ref) {
         sb.append("        int n = size();\n");
         sb.append("        for (int i = 0; i < n; i++) {\n");
         sb.append("            result.add((").append(printType(l.itemType)).append(") get(i).zzCopy(depth + 1));\n");
         sb.append("        }\n");
+        }
         sb.append("        return result;\n");
         sb.append("    }\n\n");
 
@@ -1413,12 +1533,16 @@ public class Generator {
         sb.append("    @Override public ").append(implType).append(" zzShallowCopy() {\n");
         sb.append("        ").append(implType).append(" result = new ").append(implType).append("();\n");
         sb.append("        result.ensureCapacity(size());\n");
+        if(l.ref) sb.append("        result.addAll(this);\n");
+        if (trackedMetadata(l)) sb.append("        result.zzmetadataOwner.begin();\n        try {\n");
         for (FieldDef field : prog.fieldDefs) {
             if (hasField(l, field)) {
                 // not through the setter, which counts a modification: a copy has had none
-                sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
+                if (field.isTracked()) sb.append("        result.zzAssign").append(toFirstUpper(field.getFieldName())).append("(this.").append(field.getFieldName()).append(");\n");
+                else sb.append("        result.").append(field.getFieldName()).append(" = this.").append(field.getFieldName()).append(";\n");
             }
         }
+        if (trackedMetadata(l)) sb.append("        } finally { result.zzmetadataOwner.end(); }\n");
         sb.append("        return result;\n");
         sb.append("    }\n\n");
     }
@@ -1473,6 +1597,10 @@ public class Generator {
                 .append("    ").append(getCommonSupertypeType()).append(" set(int i, ").append(getCommonSupertypeType()).append(" newElement);\n")
                 .append("    void forEachElement(java.util.function.Consumer<? super ").append(getCommonSupertypeType()).append("> action);\n")
                 .append("    default void trimToSize() { for (int i = 0, n = size(); i < n; i++) get(i).trimToSize(); }\n")
+                .append("    default boolean zzReferenceItems() { return false; }\n")
+                .append("    default void zzResetRevisions() {}\n")
+                .append("    default void zzBeginMetadata() {}\n    default void zzEndMetadata() {}\n")
+                .append("    default boolean zzSourceChild(" + getCommonSupertypeType() + " child) { return false; }\n")
                 .append("    void setParent(").append(getNullableAnnotation()).append(getCommonSupertypeType()).append(" parent);\n")
                 .append("    void replaceBy(").append(getCommonSupertypeType()).append(" other);\n")
                 .append("    /** Replaces this element, in the list it is in, by the given elements in order (none removes it). */\n")
@@ -1568,10 +1696,15 @@ public class Generator {
             sb.append("     * modifications (").append(String.join(", ", prog.countedTypes)).append(") counts one more.\n");
             sb.append("     */\n");
             sb.append("    static void modified(").append(elementType).append(" start) {\n");
-            sb.append("        for (").append(elementType).append(" e = start; e != null; e = e.getParent()) {\n");
+            sb.append("        modified(start, 1);\n    }\n");
+            sb.append("    static void modified(").append(elementType).append(" start, int mask) {\n");
+            sb.append("        ").append(elementType).append(" child = null;\n");
+            sb.append("        for (").append(elementType).append(" e = start; e != null; child = e, e = e.getParent()) {\n");
+            if (sourceRevisions()) sb.append("            if (child != null && e.zzSourceChild(child)) mask = 2;\n");
             for (String counted : prog.countedTypes) {
                 sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) {\n");
                 sb.append("                counted.zzModificationCount++;\n");
+                if (sourceRevisions()) sb.append("                if ((mask & 1) != 0) counted.zzSemanticCount++;\n                if ((mask & 2) != 0) counted.zzSourceCount++;\n");
                 if (stopAtFirstCounted) sb.append("                return; // The spec cannot nest counted nodes.\n");
                 sb.append("            }\n");
             }
@@ -1590,7 +1723,7 @@ public class Generator {
         sb.append("        java.util.ArrayDeque<").append(elementType)
                 .append("> copyStack = new java.util.ArrayDeque<>();\n");
         sb.append("        ").append(elementType).append(" rootCopy = root.zzShallowCopy();\n");
-        sb.append("        if (root.size() != 0) { originalStack.push(root); copyStack.push(rootCopy); }\n");
+        sb.append("        if (root.size() != 0 && !root.zzReferenceItems()) { originalStack.push(root); copyStack.push(rootCopy); }\n");
         sb.append("        if (withRefs) {\n");
         sb.append("            copies.put(root, rootCopy);\n");
         sb.append("            if (rootCopy.zzHasReferences()) repairs.add(rootCopy);\n");
@@ -1607,7 +1740,7 @@ public class Generator {
                 .append("(withRefs ? child.copyWithRefs() : child.copy());\n");
         sb.append("                if (copy instanceof AsgList list) list.add(childCopy);\n");
         sb.append("                else copy.set(i, childCopy);\n");
-        sb.append("                if (generatedChild && child.size() != 0) {\n");
+        sb.append("                if (generatedChild && child.size() != 0 && !child.zzReferenceItems()) {\n");
         sb.append("                    originalStack.push(child);\n");
         sb.append("                    copyStack.push(childCopy);\n");
         sb.append("                }\n");
@@ -1634,9 +1767,11 @@ public class Generator {
             sb.append("        while (!stack.isEmpty()) {\n");
             sb.append("            ").append(elementType).append(" e = stack.pop();\n");
             for (String counted : prog.countedTypes) {
-                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) counted.zzModificationCount = 0;\n");
+                sb.append("            if (e instanceof ").append(typePrefix).append(counted).append("Impl counted) { counted.zzModificationCount = 0;");
+                if (sourceRevisions()) sb.append(" counted.zzSemanticCount = counted.zzSourceCount = 0;");
+                sb.append(" }\n");
             }
-            sb.append("            for (int i = e.size() - 1; i >= 0; i--) stack.push(e.get(i));\n");
+            sb.append("            if(!e.zzReferenceItems()) for (int i = e.size() - 1; i >= 0; i--) stack.push(e.get(i));\n");
             sb.append("        }\n");
             sb.append("    }\n\n");
         }
@@ -1660,6 +1795,7 @@ public class Generator {
         sb.append("                continue;\n");
         sb.append("            }\n");
         sb.append("            if (!equal) return false;\n");
+        sb.append("            if(a.zzReferenceItems()) continue;\n");
         sb.append("            int n = a.size();\n");
         sb.append("            if (b.size() != n) return false;\n");
         sb.append("            for (int i = 0; i < n; i++) {\n");
